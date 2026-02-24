@@ -12,12 +12,14 @@ import { RefundsRepository } from './refunds.repository';
 
 @Injectable()
 export class RefundsService {
+  /** Creates the refunds service with DB, Stripe, and idempotency dependencies. */
   constructor(
     private readonly refundsRepository: RefundsRepository,
     private readonly stripeClientService: StripeClientService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
+  /** Creates a refund internally and synchronizes it to Stripe. */
   async create(dto: CreateRefundDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
       'refunds.create',

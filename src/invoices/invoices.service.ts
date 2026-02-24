@@ -4,15 +4,18 @@ import { InvoicesRepository } from './invoices.repository';
 
 @Injectable()
 export class InvoicesService {
+  /** Creates the invoices service with DB and Stripe dependencies. */
   constructor(
     private readonly invoicesRepository: InvoicesRepository,
     private readonly stripeClientService: StripeClientService,
   ) {}
 
-  async listCurrentTenant() {
+  /** Returns every invoice row stored for this company. */
+  async listForCompany() {
     return this.invoicesRepository.findAll();
   }
 
+  /** Returns one invoice by internal id or throws if missing. */
   async getById(id: string) {
     const invoice = await this.invoicesRepository.findById(id);
     if (!invoice) {
@@ -21,6 +24,7 @@ export class InvoicesService {
     return invoice;
   }
 
+  /** Fetches a Stripe invoice and upserts it into the local DB. */
   async syncFromStripe(stripeInvoiceId: string) {
     const stripeInvoice =
       await this.stripeClientService.client.invoices.retrieve(stripeInvoiceId);

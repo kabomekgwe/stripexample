@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 export class StripeClientService {
   readonly client: Stripe;
 
+  /** Creates the shared Stripe SDK client for all modules. */
   constructor(private readonly configService: ConfigService) {
     this.client = new Stripe(
       this.configService.getOrThrow<string>('STRIPE_SECRET_KEY'),

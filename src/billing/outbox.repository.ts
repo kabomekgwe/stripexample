@@ -5,8 +5,10 @@ import { integrationOutbox } from '../infra/database/schema';
 
 @Injectable()
 export class OutboxRepository {
+  /** Creates the outbox repository with database access. */
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /** Enqueues an integration event for asynchronous processing. */
   async enqueue(args: {
     topic: string;
     aggregateId: string;
@@ -19,6 +21,7 @@ export class OutboxRepository {
     });
   }
 
+  /** Returns pending outbox events ready to run now. */
   async fetchPending(limit = 20) {
     return this.databaseService.db
       .select()
@@ -33,6 +36,7 @@ export class OutboxRepository {
       .limit(limit);
   }
 
+  /** Marks an outbox event as completed. */
   async markDone(id: string) {
     await this.databaseService.db
       .update(integrationOutbox)
@@ -40,6 +44,7 @@ export class OutboxRepository {
       .where(eq(integrationOutbox.id, id));
   }
 
+  /** Schedules retry metadata for a failed outbox event. */
   async markRetry(id: string, attempts: number, error: string) {
     const nextRun = new Date(Date.now() + Math.min(2 ** attempts, 300) * 1000);
     await this.databaseService.db

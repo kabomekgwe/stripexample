@@ -5,8 +5,10 @@ import { stripeWebhookEvents } from '../infra/database/schema';
 
 @Injectable()
 export class WebhooksRepository {
+  /** Creates the webhooks repository with database access. */
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /** Checks whether a Stripe event id was already ingested. */
   async existsByStripeEventId(stripeEventId: string): Promise<boolean> {
     const [result] = await this.databaseService.db
       .select({ id: stripeWebhookEvents.id })
@@ -17,6 +19,7 @@ export class WebhooksRepository {
     return Boolean(result);
   }
 
+  /** Persists a newly received webhook event payload. */
   async create(args: {
     stripeEventId: string;
     type: string;
@@ -30,6 +33,7 @@ export class WebhooksRepository {
     });
   }
 
+  /** Marks a webhook event as successfully processed. */
   async markProcessed(stripeEventId: string) {
     await this.databaseService.db
       .update(stripeWebhookEvents)
@@ -37,6 +41,7 @@ export class WebhooksRepository {
       .where(eq(stripeWebhookEvents.stripeEventId, stripeEventId));
   }
 
+  /** Marks a webhook event as failed and increments retry counter. */
   async markFailed(stripeEventId: string, error: string) {
     const existing = await this.databaseService.db
       .select({ attemptCount: stripeWebhookEvents.attemptCount })

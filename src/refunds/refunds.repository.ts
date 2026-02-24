@@ -8,8 +8,10 @@ import {
 
 @Injectable()
 export class RefundsRepository {
+  /** Creates the refunds repository with database access. */
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /** Inserts a new internal refund request row. */
   async create(args: {
     paymentIntentId: string;
     amountCents: number;
@@ -22,6 +24,7 @@ export class RefundsRepository {
     return result;
   }
 
+  /** Stores Stripe refund linkage and latest status. */
   async attachStripeRefund(args: {
     id: string;
     stripeRefundId: string;
@@ -37,6 +40,7 @@ export class RefundsRepository {
       .where(eq(billingRefunds.id, args.id));
   }
 
+  /** Finds a refund by internal id. */
   async findById(id: string) {
     const [result] = await this.databaseService.db
       .select()
@@ -46,6 +50,7 @@ export class RefundsRepository {
     return result ?? null;
   }
 
+  /** Finds Stripe payment intent id mapped from internal payment intent id. */
   async findPaymentIntentByInternalId(id: string) {
     const [result] = await this.databaseService.db
       .select({
@@ -57,6 +62,7 @@ export class RefundsRepository {
     return result ?? null;
   }
 
+  /** Marks refund sync failure for retry handling. */
   async markSyncFailed(id: string) {
     await this.databaseService.db
       .update(billingRefunds)

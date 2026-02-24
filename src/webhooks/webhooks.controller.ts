@@ -13,8 +13,10 @@ type RawBodyRequest = Request & { rawBody?: Buffer };
 
 @Controller('webhooks')
 export class WebhooksController {
+  /** Creates the webhook controller with Stripe webhook ingestion handlers. */
   constructor(private readonly webhooksService: WebhooksService) {}
 
+  /** Verifies Stripe signature and dispatches webhook processing. */
   @Post('stripe')
   @HttpCode(200)
   async handleStripeWebhook(

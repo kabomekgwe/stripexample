@@ -15,5 +15,8 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 export function envValidation(config: Record<string, unknown>): Env {
+  /**
+   * Validates and normalizes environment variables at startup.
+   */
   return envSchema.parse(config);
 }

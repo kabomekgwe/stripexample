@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 export class RedisService implements OnModuleDestroy {
   readonly client: Redis;
 
+  /** Creates and configures the shared Redis client. */
   constructor(private readonly configService: ConfigService) {
     this.client = new Redis(
       this.configService.getOrThrow<string>('REDIS_URL'),
@@ -16,6 +17,7 @@ export class RedisService implements OnModuleDestroy {
     );
   }
 
+  /** Gracefully closes Redis connection on shutdown. */
   async onModuleDestroy(): Promise<void> {
     await this.client.quit();
   }

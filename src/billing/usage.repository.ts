@@ -5,8 +5,10 @@ import { billingUsageMonthly } from '../infra/database/schema';
 
 @Injectable()
 export class UsageRepository {
+  /** Creates the usage repository with database access. */
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /** Upserts monthly usage values and computes amount from quantity x unit price. */
   async upsertMonthlyUsage(args: {
     billingPeriod: string;
     usageQuantity: number;
@@ -42,6 +44,7 @@ export class UsageRepository {
     return this.findById(created.id);
   }
 
+  /** Finds monthly usage row by billing period. */
   async findByPeriod(billingPeriod: string) {
     const [result] = await this.databaseService.db
       .select()
@@ -52,6 +55,7 @@ export class UsageRepository {
     return result ?? null;
   }
 
+  /** Finds monthly usage row by internal id. */
   async findById(id: string) {
     const [result] = await this.databaseService.db
       .select()
@@ -61,6 +65,7 @@ export class UsageRepository {
     return result ?? null;
   }
 
+  /** Marks monthly usage as finalized for billing closure. */
   async markFinalized(id: string) {
     await this.databaseService.db
       .update(billingUsageMonthly)
@@ -68,6 +73,7 @@ export class UsageRepository {
       .where(eq(billingUsageMonthly.id, id));
   }
 
+  /** Stores Stripe invoice item linkage for usage billing. */
   async attachStripeInvoiceItem(id: string, stripeInvoiceItemId: string) {
     await this.databaseService.db
       .update(billingUsageMonthly)

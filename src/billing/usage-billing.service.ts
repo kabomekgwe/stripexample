@@ -7,6 +7,7 @@ import { UsageRepository } from './usage.repository';
 
 @Injectable()
 export class UsageBillingService {
+  /** Creates the usage billing service with queue and Stripe dependencies. */
   constructor(
     private readonly usageRepository: UsageRepository,
     private readonly outboxService: OutboxService,
@@ -14,6 +15,7 @@ export class UsageBillingService {
     private readonly redisService: RedisService,
   ) {}
 
+  /** Stores monthly usage in DB and enqueues asynchronous Stripe sync. */
   async recordMonthlyUsage(args: {
     billingPeriod: string;
     usageQuantity: number;
@@ -42,6 +44,7 @@ export class UsageBillingService {
   }
 
   @Cron('0 5 1 * *')
+  /** Processes queued usage events and creates Stripe invoice items. */
   async runMonthlyBillingJob() {
     await this.outboxService.process(async (event) => {
       if (event.topic !== 'usage.billing.finalize') {

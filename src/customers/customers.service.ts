@@ -11,12 +11,14 @@ import { CustomersRepository } from './customers.repository';
 
 @Injectable()
 export class CustomersService {
+  /** Creates the customers service with DB, idempotency, and Stripe dependencies. */
   constructor(
     private readonly customersRepository: CustomersRepository,
     private readonly idempotencyService: IdempotencyService,
     private readonly stripeClientService: StripeClientService,
   ) {}
 
+  /** Creates or reuses a customer record, then synchronizes it to Stripe safely. */
   async create(
     dto: CreateCustomerDto,
     idempotencyKey: string,
@@ -99,6 +101,7 @@ export class CustomersService {
     }
   }
 
+  /** Returns a customer row by internal id. */
   async getById(id: string) {
     return this.customersRepository.findById(id);
   }

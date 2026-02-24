@@ -13,12 +13,14 @@ import { SubscriptionsRepository } from './subscriptions.repository';
 
 @Injectable()
 export class SubscriptionsService {
+  /** Creates the subscriptions service with lifecycle orchestration dependencies. */
   constructor(
     private readonly subscriptionsRepository: SubscriptionsRepository,
     private readonly stripeClientService: StripeClientService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
+  /** Creates a subscription in DB first and links it to Stripe. */
   async create(dto: CreateSubscriptionDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
       'subscriptions.create',
@@ -70,6 +72,7 @@ export class SubscriptionsService {
     }
   }
 
+  /** Updates a subscription plan/price and reflects the change in Stripe. */
   async update(id: string, dto: UpdateSubscriptionDto, idempotencyKey: string) {
     const existing = await this.subscriptionsRepository.findById(id);
     if (!existing) {
@@ -132,6 +135,7 @@ export class SubscriptionsService {
     }
   }
 
+  /** Cancels a subscription locally and then sends cancel to Stripe. */
   async cancel(id: string, idempotencyKey: string) {
     const existing = await this.subscriptionsRepository.findById(id);
     if (!existing) {
@@ -167,6 +171,7 @@ export class SubscriptionsService {
     }
   }
 
+  /** Returns a subscription by internal id. */
   async getById(id: string) {
     return this.subscriptionsRepository.findById(id);
   }

@@ -12,12 +12,14 @@ import { PaymentIntentsRepository } from './payment-intents.repository';
 
 @Injectable()
 export class PaymentIntentsService {
+  /** Creates the payment intents service with persistence and Stripe dependencies. */
   constructor(
     private readonly paymentIntentsRepository: PaymentIntentsRepository,
     private readonly stripeClientService: StripeClientService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
+  /** Creates a payment intent in DB first and mirrors it to Stripe. */
   async create(dto: CreatePaymentIntentDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
       'payment-intents.create',
@@ -78,6 +80,7 @@ export class PaymentIntentsService {
     }
   }
 
+  /** Returns a payment intent by internal id. */
   async getById(id: string) {
     return this.paymentIntentsRepository.findById(id);
   }

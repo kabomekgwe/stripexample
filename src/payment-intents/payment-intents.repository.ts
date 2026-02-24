@@ -5,8 +5,10 @@ import { billingPaymentIntents } from '../infra/database/schema';
 
 @Injectable()
 export class PaymentIntentsRepository {
+  /** Creates the payment intent repository with database access. */
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /** Inserts a new internal payment intent. */
   async create(args: {
     customerId: string;
     amountCents: number;
@@ -24,6 +26,7 @@ export class PaymentIntentsRepository {
     return result;
   }
 
+  /** Stores Stripe payment intent linkage and latest status. */
   async attachStripePaymentIntent(args: {
     id: string;
     stripePaymentIntentId: string;
@@ -39,6 +42,7 @@ export class PaymentIntentsRepository {
       .where(eq(billingPaymentIntents.id, args.id));
   }
 
+  /** Finds a payment intent by internal id. */
   async findById(id: string) {
     const [result] = await this.databaseService.db
       .select()
@@ -49,6 +53,7 @@ export class PaymentIntentsRepository {
     return result ?? null;
   }
 
+  /** Marks payment intent sync failure for later retry. */
   async markSyncFailed(id: string): Promise<void> {
     await this.databaseService.db
       .update(billingPaymentIntents)

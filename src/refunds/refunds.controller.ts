@@ -5,8 +5,10 @@ import { RefundsService } from './refunds.service';
 
 @Controller('refunds')
 export class RefundsController {
+  /** Creates the refunds controller with refund command handlers. */
   constructor(private readonly refundsService: RefundsService) {}
 
+  /** Creates a refund in DB first and then in Stripe. */
   @Post()
   create(
     @Body() dto: CreateRefundDto,

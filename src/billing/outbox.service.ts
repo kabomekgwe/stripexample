@@ -5,8 +5,10 @@ import { OutboxRepository } from './outbox.repository';
 export class OutboxService {
   private readonly logger = new Logger(OutboxService.name);
 
+  /** Creates the outbox service with retry-aware processing helpers. */
   constructor(private readonly outboxRepository: OutboxRepository) {}
 
+  /** Adds an event into the outbox queue. */
   async enqueue(args: {
     topic: string;
     aggregateId: string;
@@ -15,6 +17,7 @@ export class OutboxService {
     await this.outboxRepository.enqueue(args);
   }
 
+  /** Processes pending outbox events with centralized error handling. */
   async process(
     handler: (event: {
       topic: string;

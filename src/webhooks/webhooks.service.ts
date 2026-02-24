@@ -15,6 +15,7 @@ import { WebhooksRepository } from './webhooks.repository';
 
 @Injectable()
 export class WebhooksService {
+  /** Creates the webhooks service with Stripe verification and persistence dependencies. */
   constructor(
     private readonly stripeClientService: StripeClientService,
     private readonly webhooksRepository: WebhooksRepository,
@@ -23,6 +24,7 @@ export class WebhooksService {
     private readonly configService: ConfigService,
   ) {}
 
+  /** Validates Stripe signature and converts payload to a typed Stripe event. */
   verifyAndBuildEvent(payload: Buffer, signature: string): Stripe.Event {
     return this.stripeClientService.client.webhooks.constructEvent(
       payload,
@@ -31,6 +33,7 @@ export class WebhooksService {
     );
   }
 
+  /** Deduplicates, locks, persists, and dispatches a Stripe webhook event. */
   async process(event: Stripe.Event): Promise<void> {
     const lockKey = `lock:webhook:${event.id}`;
     const acquired = await this.redisService.client.set(
@@ -68,6 +71,7 @@ export class WebhooksService {
     }
   }
 
+  /** Routes events to the right domain-specific handler. */
   private async dispatch(event: Stripe.Event): Promise<void> {
     if (event.type.startsWith('customer.subscription.')) {
       await this.handleSubscriptionEvent(event);
@@ -92,6 +96,7 @@ export class WebhooksService {
     }
   }
 
+  /** Applies subscription lifecycle updates from Stripe to local DB. */
   private async handleSubscriptionEvent(event: Stripe.Event) {
     const subscription = event.data.object as Stripe.Subscription;
     const internalSubscriptionId =
@@ -109,6 +114,7 @@ export class WebhooksService {
       .where(eq(billingSubscriptions.id, internalSubscriptionId));
   }
 
+  /** Applies invoice status and amount updates from Stripe to local DB. */
   private async handleInvoiceEvent(event: Stripe.Event) {
     const invoice = event.data.object as Stripe.Invoice;
     await this.databaseService.db
@@ -122,6 +128,7 @@ export class WebhooksService {
       .where(eq(billingInvoices.stripeInvoiceId, invoice.id));
   }
 
+  /** Applies payment intent status updates from Stripe to local DB. */
   private async handlePaymentIntentEvent(event: Stripe.Event) {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
     await this.databaseService.db
@@ -133,6 +140,7 @@ export class WebhooksService {
       .where(eq(billingPaymentIntents.stripePaymentIntentId, paymentIntent.id));
   }
 
+  /** Applies refund status updates from Stripe to local DB. */
   private async handleRefundEvent(event: Stripe.Event) {
     const refund = event.data.object as Stripe.Refund;
     await this.databaseService.db

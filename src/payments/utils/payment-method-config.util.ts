@@ -6,6 +6,9 @@ export type PaymentMethodConfig = {
 export function buildPaymentMethodConfig(
   currency: string,
 ): PaymentMethodConfig {
+  /**
+   * Returns default payment-method and capture settings by currency.
+   */
   const normalizedCurrency = currency.toLowerCase();
 
   if (normalizedCurrency === 'usd' || normalizedCurrency === 'eur') {

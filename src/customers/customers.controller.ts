@@ -5,8 +5,10 @@ import { CustomersService } from './customers.service';
 
 @Controller('customers')
 export class CustomersController {
+  /** Creates the customers controller with customer command handlers. */
   constructor(private readonly customersService: CustomersService) {}
 
+  /** Creates a customer in DB and synchronizes it to Stripe. */
   @Post()
   create(
     @Body() dto: CreateCustomerDto,
@@ -15,6 +17,7 @@ export class CustomersController {
     return this.customersService.create(dto, idempotencyKey ?? randomUUID());
   }
 
+  /** Returns a customer by internal id. */
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.customersService.getById(id);

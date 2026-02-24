@@ -11,12 +11,14 @@ import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 
 @Injectable()
 export class CheckoutService {
+  /** Creates the checkout service with DB, Stripe, and idempotency dependencies. */
   constructor(
     private readonly checkoutRepository: CheckoutRepository,
     private readonly stripeClientService: StripeClientService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
+  /** Creates a checkout session internally and then creates it in Stripe. */
   async createSession(dto: CreateCheckoutSessionDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
       'checkout.sessions.create',

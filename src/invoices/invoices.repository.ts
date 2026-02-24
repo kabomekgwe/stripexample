@@ -5,8 +5,10 @@ import { billingInvoices } from '../infra/database/schema';
 
 @Injectable()
 export class InvoicesRepository {
+  /** Creates the invoices repository with database access. */
   constructor(private readonly databaseService: DatabaseService) {}
 
+  /** Finds an invoice by internal id. */
   async findById(id: string) {
     const [result] = await this.databaseService.db
       .select()
@@ -17,6 +19,7 @@ export class InvoicesRepository {
     return result ?? null;
   }
 
+  /** Returns all invoices ordered by newest first. */
   async findAll() {
     return this.databaseService.db
       .select()
@@ -24,6 +27,7 @@ export class InvoicesRepository {
       .orderBy(desc(billingInvoices.createdAt));
   }
 
+  /** Finds an invoice by Stripe invoice id. */
   async findByStripeInvoiceId(stripeInvoiceId: string) {
     const [result] = await this.databaseService.db
       .select()
@@ -34,6 +38,7 @@ export class InvoicesRepository {
     return result ?? null;
   }
 
+  /** Upserts invoice fields sourced from Stripe into local DB. */
   async upsertFromStripe(args: {
     stripeInvoiceId: string;
     amountDueCents: number;
@@ -74,6 +79,7 @@ export class InvoicesRepository {
     return this.findById(created.id);
   }
 
+  /** Updates invoice status and amounts by Stripe invoice id. */
   async updateByStripeInvoiceId(args: {
     stripeInvoiceId: string;
     status: string;
