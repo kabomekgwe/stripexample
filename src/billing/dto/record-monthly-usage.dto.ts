@@ -2,9 +2,6 @@ import { IsInt, IsString, Matches, Min } from 'class-validator';
 
 export class RecordMonthlyUsageDto {
   @IsString()
-  tenantId!: string;
-
-  @IsString()
   stripeCustomerId!: string;
 
   @Matches(/^\d{4}-\d{2}$/)

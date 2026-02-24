@@ -20,7 +20,6 @@ export class RefundsService {
 
   async create(dto: CreateRefundDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
-      dto,
       'refunds.create',
       idempotencyKey,
     );
@@ -42,14 +41,17 @@ export class RefundsService {
         throw new NotFoundException('Linked Stripe payment intent not found.');
       }
 
-      const internal = await this.refundsRepository.create(dto);
+      const internal = await this.refundsRepository.create({
+        paymentIntentId: dto.paymentIntentId,
+        amountCents: dto.amountCents,
+        reason: dto.reason,
+      });
       try {
         const stripeRefund =
           await this.stripeClientService.client.refunds.create({
             payment_intent: paymentIntent.stripePaymentIntentId,
             amount: dto.amountCents,
             metadata: {
-              tenantId: dto.tenantId,
               internalRefundId: internal.id,
             },
           });

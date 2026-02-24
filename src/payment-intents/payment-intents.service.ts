@@ -20,7 +20,6 @@ export class PaymentIntentsService {
 
   async create(dto: CreatePaymentIntentDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
-      dto,
       'payment-intents.create',
       idempotencyKey,
     );
@@ -35,7 +34,11 @@ export class PaymentIntentsService {
     }
 
     try {
-      const internal = await this.paymentIntentsRepository.create(dto);
+      const internal = await this.paymentIntentsRepository.create({
+        customerId: dto.customerId,
+        amountCents: dto.amountCents,
+        currency: dto.currency,
+      });
       const paymentMethodConfig = buildPaymentMethodConfig(dto.currency);
 
       try {
@@ -47,7 +50,6 @@ export class PaymentIntentsService {
             description: dto.description,
             automatic_payment_methods: { enabled: true },
             metadata: {
-              tenantId: dto.tenantId,
               internalPaymentIntentId: internal.id,
             },
             payment_method_types: paymentMethodConfig.allowed,

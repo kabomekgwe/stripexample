@@ -17,11 +17,10 @@ export class InvoicesRepository {
     return result ?? null;
   }
 
-  async findByTenant(tenantId: string) {
+  async findAll() {
     return this.databaseService.db
       .select()
       .from(billingInvoices)
-      .where(eq(billingInvoices.tenantId, tenantId))
       .orderBy(desc(billingInvoices.createdAt));
   }
 
@@ -36,7 +35,6 @@ export class InvoicesRepository {
   }
 
   async upsertFromStripe(args: {
-    tenantId: string;
     stripeInvoiceId: string;
     amountDueCents: number;
     amountPaidCents: number;
@@ -64,7 +62,6 @@ export class InvoicesRepository {
     const [created] = await this.databaseService.db
       .insert(billingInvoices)
       .values({
-        tenantId: args.tenantId,
         stripeInvoiceId: args.stripeInvoiceId,
         amountDueCents: args.amountDueCents,
         amountPaidCents: args.amountPaidCents,

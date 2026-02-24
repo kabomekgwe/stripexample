@@ -8,7 +8,6 @@ export class CheckoutRepository {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(args: {
-    tenantId: string;
     customerId: string;
     mode: 'payment' | 'subscription';
     successUrl: string;

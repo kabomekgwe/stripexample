@@ -11,7 +11,6 @@ export class RefundsRepository {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(args: {
-    tenantId: string;
     paymentIntentId: string;
     amountCents: number;
     reason?: string;

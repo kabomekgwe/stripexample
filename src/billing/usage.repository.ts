@@ -8,15 +8,11 @@ export class UsageRepository {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async upsertMonthlyUsage(args: {
-    tenantId: string;
     billingPeriod: string;
     usageQuantity: number;
     unitPriceCents: number;
   }) {
-    const existing = await this.findByTenantAndPeriod(
-      args.tenantId,
-      args.billingPeriod,
-    );
+    const existing = await this.findByPeriod(args.billingPeriod);
     const amountCents = args.usageQuantity * args.unitPriceCents;
 
     if (existing) {
@@ -30,13 +26,12 @@ export class UsageRepository {
         })
         .where(eq(billingUsageMonthly.id, existing.id));
 
-      return this.findByTenantAndPeriod(args.tenantId, args.billingPeriod);
+      return this.findByPeriod(args.billingPeriod);
     }
 
     const [created] = await this.databaseService.db
       .insert(billingUsageMonthly)
       .values({
-        tenantId: args.tenantId,
         billingPeriod: args.billingPeriod,
         usageQuantity: args.usageQuantity,
         unitPriceCents: args.unitPriceCents,
@@ -47,16 +42,11 @@ export class UsageRepository {
     return this.findById(created.id);
   }
 
-  async findByTenantAndPeriod(tenantId: string, billingPeriod: string) {
+  async findByPeriod(billingPeriod: string) {
     const [result] = await this.databaseService.db
       .select()
       .from(billingUsageMonthly)
-      .where(
-        and(
-          eq(billingUsageMonthly.tenantId, tenantId),
-          eq(billingUsageMonthly.billingPeriod, billingPeriod),
-        ),
-      )
+      .where(and(eq(billingUsageMonthly.billingPeriod, billingPeriod)))
       .limit(1);
 
     return result ?? null;

@@ -26,7 +26,6 @@ export class CustomersService {
     syncStatus: string;
   }> {
     const scopedKey = buildIdempotencyNamespace(
-      dto,
       'customers.create',
       idempotencyKey,
     );
@@ -45,10 +44,7 @@ export class CustomersService {
     }
 
     try {
-      const existing = await this.customersRepository.findByTenantAndEmail({
-        tenantId: dto.tenantId,
-        email: dto.email,
-      });
+      const existing = await this.customersRepository.findByEmail(dto.email);
       if (existing?.stripeCustomerId) {
         const response = {
           id: existing.id,
@@ -59,7 +55,12 @@ export class CustomersService {
         return response;
       }
 
-      const internal = existing ?? (await this.customersRepository.create(dto));
+      const internal =
+        existing ??
+        (await this.customersRepository.create({
+          userId: dto.userId,
+          email: dto.email,
+        }));
 
       try {
         const stripeCustomer =
@@ -67,7 +68,6 @@ export class CustomersService {
             email: dto.email,
             name: dto.name,
             metadata: {
-              tenantId: dto.tenantId,
               internalCustomerId: internal.id,
             },
           });

@@ -14,7 +14,6 @@ export const billingCustomers = pgTable(
   'billing_customers',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    tenantId: varchar('tenant_id', { length: 128 }).notNull(),
     userId: varchar('user_id', { length: 128 }),
     email: varchar('email', { length: 320 }).notNull(),
     stripeCustomerId: varchar('stripe_customer_id', { length: 128 }),
@@ -28,17 +27,11 @@ export const billingCustomers = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [
-    uniqueIndex('billing_customers_tenant_email_idx').on(
-      table.tenantId,
-      table.email,
-    ),
-  ],
+  (table) => [uniqueIndex('billing_customers_email_idx').on(table.email)],
 );
 
 export const billingPaymentIntents = pgTable('billing_payment_intents', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tenantId: varchar('tenant_id', { length: 128 }).notNull(),
   customerId: uuid('customer_id').notNull(),
   amountCents: integer('amount_cents').notNull(),
   currency: varchar('currency', { length: 8 }).notNull(),
@@ -56,7 +49,6 @@ export const billingPaymentIntents = pgTable('billing_payment_intents', {
 
 export const billingSubscriptions = pgTable('billing_subscriptions', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tenantId: varchar('tenant_id', { length: 128 }).notNull(),
   customerId: uuid('customer_id').notNull(),
   planCode: varchar('plan_code', { length: 64 }).notNull(),
   status: varchar('status', { length: 32 }).notNull().default('pending'),
@@ -74,7 +66,6 @@ export const billingSubscriptions = pgTable('billing_subscriptions', {
 
 export const billingCheckoutSessions = pgTable('billing_checkout_sessions', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tenantId: varchar('tenant_id', { length: 128 }).notNull(),
   customerId: uuid('customer_id').notNull(),
   mode: varchar('mode', { length: 32 }).notNull(),
   successUrl: text('success_url').notNull(),
@@ -93,7 +84,6 @@ export const billingCheckoutSessions = pgTable('billing_checkout_sessions', {
 
 export const billingInvoices = pgTable('billing_invoices', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tenantId: varchar('tenant_id', { length: 128 }).notNull(),
   subscriptionId: uuid('subscription_id'),
   stripeInvoiceId: varchar('stripe_invoice_id', { length: 128 }),
   amountDueCents: integer('amount_due_cents').notNull().default(0),
@@ -111,7 +101,6 @@ export const billingInvoices = pgTable('billing_invoices', {
 
 export const billingRefunds = pgTable('billing_refunds', {
   id: uuid('id').defaultRandom().primaryKey(),
-  tenantId: varchar('tenant_id', { length: 128 }).notNull(),
   paymentIntentId: uuid('payment_intent_id').notNull(),
   amountCents: integer('amount_cents').notNull(),
   reason: varchar('reason', { length: 64 }),
@@ -129,7 +118,6 @@ export const billingUsageMonthly = pgTable(
   'billing_usage_monthly',
   {
     id: uuid('id').defaultRandom().primaryKey(),
-    tenantId: varchar('tenant_id', { length: 128 }).notNull(),
     billingPeriod: varchar('billing_period', { length: 7 }).notNull(),
     usageQuantity: integer('usage_quantity').notNull().default(0),
     unitPriceCents: integer('unit_price_cents').notNull().default(0),
@@ -144,10 +132,7 @@ export const billingUsageMonthly = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex('billing_usage_monthly_tenant_period_idx').on(
-      table.tenantId,
-      table.billingPeriod,
-    ),
+    uniqueIndex('billing_usage_monthly_period_idx').on(table.billingPeriod),
   ],
 );
 

@@ -15,13 +15,16 @@ export class UsageBillingService {
   ) {}
 
   async recordMonthlyUsage(args: {
-    tenantId: string;
     billingPeriod: string;
     usageQuantity: number;
     unitPriceCents: number;
     stripeCustomerId: string;
   }) {
-    const usage = await this.usageRepository.upsertMonthlyUsage(args);
+    const usage = await this.usageRepository.upsertMonthlyUsage({
+      billingPeriod: args.billingPeriod,
+      usageQuantity: args.usageQuantity,
+      unitPriceCents: args.unitPriceCents,
+    });
     if (!usage) {
       return null;
     }
@@ -31,7 +34,6 @@ export class UsageBillingService {
       aggregateId: usage.id,
       payload: {
         usageId: usage.id,
-        tenantId: usage.tenantId,
         stripeCustomerId: args.stripeCustomerId,
       },
     });
@@ -52,7 +54,7 @@ export class UsageBillingService {
         return;
       }
 
-      const lockKey = `lock:usage:${usage.tenantId}:${usage.billingPeriod}`;
+      const lockKey = `lock:usage:${usage.billingPeriod}`;
       const acquired = await this.redisService.client.set(
         lockKey,
         '1',
@@ -73,7 +75,6 @@ export class UsageBillingService {
             description: `Usage charge for ${usage.billingPeriod}`,
             metadata: {
               internalUsageId: usage.id,
-              tenantId: usage.tenantId,
             },
           });
 

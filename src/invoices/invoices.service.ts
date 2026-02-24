@@ -9,8 +9,8 @@ export class InvoicesService {
     private readonly stripeClientService: StripeClientService,
   ) {}
 
-  async listByTenant(tenantId: string) {
-    return this.invoicesRepository.findByTenant(tenantId);
+  async listCurrentTenant() {
+    return this.invoicesRepository.findAll();
   }
 
   async getById(id: string) {
@@ -21,12 +21,11 @@ export class InvoicesService {
     return invoice;
   }
 
-  async syncFromStripe(stripeInvoiceId: string, tenantId: string) {
+  async syncFromStripe(stripeInvoiceId: string) {
     const stripeInvoice =
       await this.stripeClientService.client.invoices.retrieve(stripeInvoiceId);
 
     return this.invoicesRepository.upsertFromStripe({
-      tenantId,
       stripeInvoiceId: stripeInvoice.id,
       amountDueCents: stripeInvoice.amount_due,
       amountPaidCents: stripeInvoice.amount_paid,

@@ -8,7 +8,6 @@ export class PaymentIntentsRepository {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(args: {
-    tenantId: string;
     customerId: string;
     amountCents: number;
     currency: string;
@@ -16,7 +15,6 @@ export class PaymentIntentsRepository {
     const [result] = await this.databaseService.db
       .insert(billingPaymentIntents)
       .values({
-        tenantId: args.tenantId,
         customerId: args.customerId,
         amountCents: args.amountCents,
         currency: args.currency.toLowerCase(),

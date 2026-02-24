@@ -8,14 +8,12 @@ export class CustomersRepository {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(args: {
-    tenantId: string;
     userId?: string;
     email: string;
   }): Promise<{ id: string }> {
     const [result] = await this.databaseService.db
       .insert(billingCustomers)
       .values({
-        tenantId: args.tenantId,
         userId: args.userId,
         email: args.email,
       })
@@ -24,22 +22,16 @@ export class CustomersRepository {
     return result;
   }
 
-  async findByTenantAndEmail(args: {
-    tenantId: string;
-    email: string;
-  }): Promise<{ id: string; stripeCustomerId: string | null } | null> {
+  async findByEmail(
+    email: string,
+  ): Promise<{ id: string; stripeCustomerId: string | null } | null> {
     const [result] = await this.databaseService.db
       .select({
         id: billingCustomers.id,
         stripeCustomerId: billingCustomers.stripeCustomerId,
       })
       .from(billingCustomers)
-      .where(
-        and(
-          eq(billingCustomers.tenantId, args.tenantId),
-          eq(billingCustomers.email, args.email),
-        ),
-      )
+      .where(and(eq(billingCustomers.email, email)))
       .limit(1);
 
     return result ?? null;

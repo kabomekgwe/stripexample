@@ -1,10 +1,6 @@
-import { IsIn, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsIn, IsString, IsUrl } from 'class-validator';
 
 export class CreateCheckoutSessionDto {
-  @IsString()
-  @MaxLength(128)
-  tenantId!: string;
-
   @IsString()
   customerId!: string;
 

@@ -2,10 +2,6 @@ import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreatePaymentIntentDto {
   @IsString()
-  @MaxLength(128)
-  tenantId!: string;
-
-  @IsString()
   customerId!: string;
 
   @IsInt()

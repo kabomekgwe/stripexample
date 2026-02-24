@@ -19,7 +19,6 @@ export class CheckoutService {
 
   async createSession(dto: CreateCheckoutSessionDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
-      dto,
       'checkout.sessions.create',
       idempotencyKey,
     );
@@ -34,7 +33,12 @@ export class CheckoutService {
     }
 
     try {
-      const internal = await this.checkoutRepository.create(dto);
+      const internal = await this.checkoutRepository.create({
+        customerId: dto.customerId,
+        mode: dto.mode,
+        successUrl: dto.successUrl,
+        cancelUrl: dto.cancelUrl,
+      });
 
       try {
         const stripeSession =
@@ -45,7 +49,6 @@ export class CheckoutService {
             cancel_url: dto.cancelUrl,
             line_items: [{ price: dto.stripePriceId, quantity: 1 }],
             metadata: {
-              tenantId: dto.tenantId,
               internalCheckoutSessionId: internal.id,
             },
           });

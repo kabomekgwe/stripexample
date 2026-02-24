@@ -8,7 +8,6 @@ export class SubscriptionsRepository {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async create(args: {
-    tenantId: string;
     customerId: string;
     planCode: string;
   }): Promise<{ id: string }> {

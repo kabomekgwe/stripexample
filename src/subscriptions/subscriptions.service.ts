@@ -21,7 +21,6 @@ export class SubscriptionsService {
 
   async create(dto: CreateSubscriptionDto, idempotencyKey: string) {
     const scopedKey = buildIdempotencyNamespace(
-      dto,
       'subscriptions.create',
       idempotencyKey,
     );
@@ -35,14 +34,16 @@ export class SubscriptionsService {
     }
 
     try {
-      const internal = await this.subscriptionsRepository.create(dto);
+      const internal = await this.subscriptionsRepository.create({
+        customerId: dto.customerId,
+        planCode: dto.planCode,
+      });
       try {
         const stripeSubscription =
           await this.stripeClientService.client.subscriptions.create({
             customer: dto.customerId,
             items: [{ price: dto.stripePriceId }],
             metadata: {
-              tenantId: dto.tenantId,
               internalSubscriptionId: internal.id,
               planCode: dto.planCode,
             },
@@ -76,7 +77,6 @@ export class SubscriptionsService {
     }
 
     const scopedKey = buildIdempotencyNamespace(
-      { tenantId: existing.tenantId },
       `subscriptions.update.${id}`,
       idempotencyKey,
     );
@@ -139,7 +139,6 @@ export class SubscriptionsService {
     }
 
     const scopedKey = buildIdempotencyNamespace(
-      { tenantId: existing.tenantId },
       `subscriptions.cancel.${id}`,
       idempotencyKey,
     );

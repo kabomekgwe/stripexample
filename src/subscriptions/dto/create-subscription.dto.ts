@@ -1,10 +1,6 @@
-import { IsString, MaxLength } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class CreateSubscriptionDto {
-  @IsString()
-  @MaxLength(128)
-  tenantId!: string;
-
   @IsString()
   customerId!: string;
 

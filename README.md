@@ -65,7 +65,7 @@ Services:
 - `PATCH /subscriptions/:id`
 - `POST /subscriptions/:id/cancel`
 - `GET /subscriptions/:id`
-- `GET /invoices?tenantId=...`
+- `GET /invoices`
 - `GET /invoices/:id`
 - `POST /refunds`
 - `POST /billing/usage-monthly`
@@ -74,7 +74,7 @@ Services:
 
 ## Usage-based billing flow
 
-1. Send `POST /billing/usage-monthly` with tenant usage for `YYYY-MM`.
+1. Send `POST /billing/usage-monthly` with company usage for `YYYY-MM`.
 2. Service stores/upserts usage in DB.
 3. Outbox event is created.
 4. Scheduled billing processor finalizes usage and creates Stripe invoice item.
