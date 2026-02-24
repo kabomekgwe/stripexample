@@ -10,6 +10,9 @@ const envSchema = z.object({
   STRIPE_SECRET_KEY: z.string().min(1),
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   STRIPE_API_VERSION: z.string().default('2024-06-20'),
+  SWAGGER_ENABLED: z.enum(['true', 'false']).optional(),
+  SWAGGER_PATH: z.string().default('docs'),
+  SWAGGER_DOCS_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

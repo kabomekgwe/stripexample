@@ -34,6 +34,12 @@ Required:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 
+Swagger (optional):
+
+- `SWAGGER_ENABLED` (`true`/`false`)
+- `SWAGGER_PATH` (default `docs`)
+- `SWAGGER_DOCS_TOKEN` (optional docs protection token)
+
 ## Install and run
 
 ```bash
@@ -71,6 +77,18 @@ Services:
 - `POST /billing/usage-monthly`
 - `POST /webhooks/stripe`
 - `GET /health`
+
+## API docs (Swagger)
+
+- UI: `GET /docs` (or your `SWAGGER_PATH`)
+- OpenAPI JSON: `GET /docs-json`
+- OpenAPI YAML: `GET /docs-yaml`
+
+Production-safe behavior:
+
+- Swagger is on by default in non-production.
+- In production, set `SWAGGER_ENABLED=true` to expose docs.
+- If `SWAGGER_DOCS_TOKEN` is set, send `x-docs-token` header for docs access.
 
 ## Usage-based billing flow
 
