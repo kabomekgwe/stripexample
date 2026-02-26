@@ -82,7 +82,7 @@ export const billingInvoices = sqliteTable(
     stripeInvoiceId: text('stripe_invoice_id'),
     amountDueCents: integer('amount_due_cents').notNull().default(0),
     amountPaidCents: integer('amount_paid_cents').notNull().default(0),
-    currency: text('currency').notNull().default('usd'),
+    currency: text('currency').notNull().default('gbp'),
     status: text('status').notNull().default('draft'),
     createdAt: timestampColumn('created_at'),
     updatedAt: timestampColumn('updated_at'),

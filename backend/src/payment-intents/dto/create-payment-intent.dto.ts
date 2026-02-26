@@ -2,7 +2,7 @@ import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreatePaymentIntentDto {
-  @ApiProperty({ example: 'cus_123456789' })
+  @ApiProperty({ example: 'a4a4d5c7-0bd1-4a58-9eb0-7fca8f67be6e' })
   @IsString()
   customerId!: string;
 
@@ -11,10 +11,11 @@ export class CreatePaymentIntentDto {
   @Min(1)
   amountCents!: number;
 
-  @ApiProperty({ example: 'usd' })
+  @ApiPropertyOptional({ example: 'gbp', default: 'gbp' })
+  @IsOptional()
   @IsString()
   @MaxLength(8)
-  currency!: string;
+  currency?: string;
 
   @ApiPropertyOptional({ example: 'Monthly platform fee' })
   @IsOptional()

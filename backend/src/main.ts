@@ -27,6 +27,16 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
+  const frontendOrigin = configService.get<string>(
+    'FRONTEND_ORIGIN',
+    'http://localhost:3001',
+  );
+  app.enableCors({
+    origin: frontendOrigin.split(',').map((item) => item.trim()),
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
+  });
+
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const swaggerEnabledEnv = configService.get<string>('SWAGGER_ENABLED');
   const swaggerEnabled =
