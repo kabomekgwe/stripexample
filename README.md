@@ -64,6 +64,11 @@ Services:
 
 - `POST /customers`
 - `GET /customers/:id`
+- `GET /payments/payment-methods/enabled`
+- `POST /payments/payment-methods/attach`
+- `POST /payments/setup-intents`
+- `POST /payments/payment-methods/default`
+- `GET /payments/customers/:customerId/payment-methods`
 - `POST /payment-intents`
 - `GET /payment-intents/:id`
 - `POST /checkout/sessions`
