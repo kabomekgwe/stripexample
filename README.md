@@ -71,6 +71,9 @@ Services:
 - `POST /payments/payment-methods/detach`
 - `POST /payments/setup-intents`
 - `POST /payments/payment-methods/default`
+- `POST /payments/customers/:customerId/payment-methods/flows/attach`
+- `POST /payments/customers/:customerId/payment-methods/flows/add-more`
+- `GET /payments/customers/:customerId/payment-methods/flows/summary`
 - `GET /payments/customers/:customerId/payment-methods/default`
 - `GET /payments/customers/:customerId/payment-methods`
 - `POST /payment-intents`
