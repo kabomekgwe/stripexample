@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { IdempotencyService } from '../infra/idempotency/idempotency.service';
+import { PaymentsService } from '../payments/payments.service';
 import { buildIdempotencyNamespace } from '../payments/utils/account.util';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
 import { CheckoutRepository } from './checkout.repository';
@@ -15,6 +16,7 @@ export class CheckoutService {
   constructor(
     private readonly checkoutRepository: CheckoutRepository,
     private readonly stripeClientService: StripeClientService,
+    private readonly paymentsService: PaymentsService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
@@ -41,6 +43,12 @@ export class CheckoutService {
         successUrl: dto.successUrl,
         cancelUrl: dto.cancelUrl,
       });
+      const allowedPaymentMethods =
+        await this.paymentsService.resolveAllowedPaymentMethodTypes({
+          requestedMethodTypes: dto.paymentMethodTypes,
+          currency: dto.currency,
+          country: dto.country,
+        });
 
       try {
         const stripeSession =
@@ -50,6 +58,7 @@ export class CheckoutService {
             success_url: dto.successUrl,
             cancel_url: dto.cancelUrl,
             line_items: [{ price: dto.stripePriceId, quantity: 1 }],
+            payment_method_types: allowedPaymentMethods,
             metadata: {
               internalCheckoutSessionId: internal.id,
             },

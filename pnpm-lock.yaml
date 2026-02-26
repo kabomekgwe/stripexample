@@ -37,7 +37,7 @@ importers:
         version: 0.14.3
       drizzle-orm:
         specifier: ^0.45.1
-        version: 0.45.1(@types/pg@8.16.0)(better-sqlite3@11.10.0)(pg@8.18.0)
+        version: 0.45.1(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(better-sqlite3@11.10.0)(pg@8.18.0)
       ioredis:
         specifier: ^5.9.3
         version: 5.9.3
@@ -72,6 +72,9 @@ importers:
       '@nestjs/testing':
         specifier: ^11.0.1
         version: 11.1.14(@nestjs/common@11.1.14(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.14)(@nestjs/platform-express@11.1.14)
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/express':
         specifier: ^5.0.0
         version: 5.0.6
@@ -1148,6 +1151,9 @@ packages:
 
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
+
+  '@types/better-sqlite3@7.6.13':
+    resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
 
   '@types/body-parser@1.19.6':
     resolution: {integrity: sha512-HLFeCYgz89uk22N5Qg3dvGvsv46B8GLvKKo1zKG4NybA8U2DiEO3w9lqGg29t/tfLRJpJ6iQxnVw4OnB7MoM9g==}
@@ -4758,6 +4764,10 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.0
 
+  '@types/better-sqlite3@7.6.13':
+    dependencies:
+      '@types/node': 22.19.11
+
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
@@ -5527,8 +5537,9 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  drizzle-orm@0.45.1(@types/pg@8.16.0)(better-sqlite3@11.10.0)(pg@8.18.0):
+  drizzle-orm@0.45.1(@types/better-sqlite3@7.6.13)(@types/pg@8.16.0)(better-sqlite3@11.10.0)(pg@8.18.0):
     optionalDependencies:
+      '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.16.0
       better-sqlite3: 11.10.0
       pg: 8.18.0

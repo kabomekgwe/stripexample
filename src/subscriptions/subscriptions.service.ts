@@ -4,8 +4,10 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import Stripe from 'stripe';
 import { IdempotencyService } from '../infra/idempotency/idempotency.service';
 import { buildIdempotencyNamespace } from '../payments/utils/account.util';
+import { PaymentsService } from '../payments/payments.service';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
@@ -17,6 +19,7 @@ export class SubscriptionsService {
   constructor(
     private readonly subscriptionsRepository: SubscriptionsRepository,
     private readonly stripeClientService: StripeClientService,
+    private readonly paymentsService: PaymentsService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
@@ -40,11 +43,23 @@ export class SubscriptionsService {
         customerId: dto.customerId,
         planCode: dto.planCode,
       });
+      const allowedPaymentMethods =
+        await this.paymentsService.resolveAllowedPaymentMethodTypes({
+          requestedMethodTypes: dto.paymentMethodTypes,
+          currency: dto.currency,
+          country: dto.country,
+        });
+      const subscriptionPaymentMethods = this.toSubscriptionPaymentMethodTypes(
+        allowedPaymentMethods,
+      );
       try {
         const stripeSubscription =
           await this.stripeClientService.client.subscriptions.create({
             customer: dto.customerId,
             items: [{ price: dto.stripePriceId }],
+            payment_settings: {
+              payment_method_types: subscriptionPaymentMethods,
+            },
             metadata: {
               internalSubscriptionId: internal.id,
               planCode: dto.planCode,
@@ -174,5 +189,29 @@ export class SubscriptionsService {
   /** Returns a subscription by internal id. */
   async getById(id: string) {
     return this.subscriptionsRepository.findById(id);
+  }
+
+  private toSubscriptionPaymentMethodTypes(
+    methods: string[],
+  ): Stripe.SubscriptionCreateParams.PaymentSettings.PaymentMethodType[] {
+    const supported =
+      new Set<Stripe.SubscriptionCreateParams.PaymentSettings.PaymentMethodType>(
+        ['card', 'link', 'customer_balance', 'sepa_debit', 'us_bank_account'],
+      );
+
+    const resolved = methods.filter(
+      (
+        method,
+      ): method is Stripe.SubscriptionCreateParams.PaymentSettings.PaymentMethodType =>
+        supported.has(
+          method as Stripe.SubscriptionCreateParams.PaymentSettings.PaymentMethodType,
+        ),
+    );
+
+    return resolved.length
+      ? resolved
+      : ([
+          'card',
+        ] satisfies Stripe.SubscriptionCreateParams.PaymentSettings.PaymentMethodType[]);
   }
 }

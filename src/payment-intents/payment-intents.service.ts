@@ -6,6 +6,7 @@ import {
 import { IdempotencyService } from '../infra/idempotency/idempotency.service';
 import { buildIdempotencyNamespace } from '../payments/utils/account.util';
 import { buildPaymentMethodConfig } from '../payments/utils/payment-method-config.util';
+import { PaymentsService } from '../payments/payments.service';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
 import { PaymentIntentsRepository } from './payment-intents.repository';
@@ -16,6 +17,7 @@ export class PaymentIntentsService {
   constructor(
     private readonly paymentIntentsRepository: PaymentIntentsRepository,
     private readonly stripeClientService: StripeClientService,
+    private readonly paymentsService: PaymentsService,
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
@@ -42,6 +44,12 @@ export class PaymentIntentsService {
         currency: dto.currency,
       });
       const paymentMethodConfig = buildPaymentMethodConfig(dto.currency);
+      const allowedPaymentMethods =
+        await this.paymentsService.resolveAllowedPaymentMethodTypes({
+          requestedMethodTypes: paymentMethodConfig.allowed,
+          currency: dto.currency,
+          country: dto.customerCountry,
+        });
 
       try {
         const stripeIntent =
@@ -54,7 +62,7 @@ export class PaymentIntentsService {
             metadata: {
               internalPaymentIntentId: internal.id,
             },
-            payment_method_types: paymentMethodConfig.allowed,
+            payment_method_types: allowedPaymentMethods,
             capture_method: paymentMethodConfig.captureMethod,
           });
 

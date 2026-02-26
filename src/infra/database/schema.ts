@@ -145,6 +145,64 @@ export const integrationOutbox = sqliteTable('integration_outbox', {
   updatedAt: timestampColumn('updated_at'),
 });
 
+export const billingPaymentMethodPolicies = sqliteTable(
+  'billing_payment_method_policies',
+  {
+    id: idColumn(),
+    paymentMethodType: text('payment_method_type').notNull(),
+    currency: text('currency').notNull().default(''),
+    country: text('country').notNull().default(''),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    priority: integer('priority').notNull().default(100),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    uniqueIndex('billing_payment_method_policies_scope_idx').on(
+      table.paymentMethodType,
+      table.currency,
+      table.country,
+    ),
+  ],
+);
+
+export const billingSetupIntents = sqliteTable('billing_setup_intents', {
+  id: idColumn(),
+  stripeSetupIntentId: text('stripe_setup_intent_id').notNull().unique(),
+  stripeCustomerId: text('stripe_customer_id').notNull(),
+  stripePaymentMethodId: text('stripe_payment_method_id'),
+  status: text('status').notNull(),
+  usage: text('usage'),
+  lastSetupError: text('last_setup_error'),
+  createdAt: timestampColumn('created_at'),
+  updatedAt: timestampColumn('updated_at'),
+});
+
+export const billingCustomerPaymentMethods = sqliteTable(
+  'billing_customer_payment_methods',
+  {
+    id: idColumn(),
+    customerId: text('customer_id'),
+    stripeCustomerId: text('stripe_customer_id'),
+    stripePaymentMethodId: text('stripe_payment_method_id').notNull().unique(),
+    type: text('type').notNull(),
+    status: text('status').notNull().default('attached'),
+    isDefault: integer('is_default', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    mandateId: text('mandate_id'),
+    details: text('details', { mode: 'json' }).$type<Record<string, unknown>>(),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    uniqueIndex('billing_customer_payment_methods_scope_idx').on(
+      table.stripeCustomerId,
+      table.stripePaymentMethodId,
+    ),
+  ],
+);
+
 export const schema = {
   billingCustomers,
   billingPaymentIntents,
@@ -155,4 +213,7 @@ export const schema = {
   billingUsageMonthly,
   stripeWebhookEvents,
   integrationOutbox,
+  billingPaymentMethodPolicies,
+  billingSetupIntents,
+  billingCustomerPaymentMethods,
 };

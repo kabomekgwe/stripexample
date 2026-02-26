@@ -17,7 +17,7 @@ export class DatabaseService implements OnModuleDestroy {
   }
 
   /** Closes the SQLite connection during application shutdown. */
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): void {
     this.sqlite.close();
   }
 }

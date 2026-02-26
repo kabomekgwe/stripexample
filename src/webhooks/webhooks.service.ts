@@ -9,6 +9,7 @@ import {
   billingRefunds,
   billingSubscriptions,
 } from '../infra/database/schema';
+import { PaymentsRepository } from '../payments/payments.repository';
 import { RedisService } from '../infra/redis/redis.service';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
 import { WebhooksRepository } from './webhooks.repository';
@@ -19,6 +20,7 @@ export class WebhooksService {
   constructor(
     private readonly stripeClientService: StripeClientService,
     private readonly webhooksRepository: WebhooksRepository,
+    private readonly paymentsRepository: PaymentsRepository,
     private readonly redisService: RedisService,
     private readonly databaseService: DatabaseService,
     private readonly configService: ConfigService,
@@ -88,6 +90,16 @@ export class WebhooksService {
       return;
     }
 
+    if (event.type.startsWith('setup_intent.')) {
+      await this.handleSetupIntentEvent(event);
+      return;
+    }
+
+    if (event.type.startsWith('payment_method.')) {
+      await this.handlePaymentMethodEvent(event);
+      return;
+    }
+
     if (
       event.type.startsWith('charge.refund') ||
       event.type.startsWith('refund.')
@@ -150,5 +162,69 @@ export class WebhooksService {
         updatedAt: new Date(),
       })
       .where(eq(billingRefunds.stripeRefundId, refund.id));
+  }
+
+  /** Syncs setup intent lifecycle and linked payment method state locally. */
+  private async handleSetupIntentEvent(event: Stripe.Event) {
+    const setupIntent = event.data.object as Stripe.SetupIntent;
+    await this.paymentsRepository.upsertSetupIntentState(setupIntent);
+
+    const paymentMethodId =
+      typeof setupIntent.payment_method === 'string'
+        ? setupIntent.payment_method
+        : setupIntent.payment_method?.id;
+
+    if (!paymentMethodId) {
+      return;
+    }
+
+    const paymentMethod =
+      await this.paymentsRepository.retrievePaymentMethod(paymentMethodId);
+    await this.paymentsRepository.upsertPaymentMethodState(
+      paymentMethod,
+      'attached',
+    );
+
+    const stripeCustomerId =
+      typeof setupIntent.customer === 'string'
+        ? setupIntent.customer
+        : setupIntent.customer?.id;
+    if (!stripeCustomerId) {
+      return;
+    }
+
+    const defaultPaymentMethodId =
+      await this.paymentsRepository.getDefaultPaymentMethodId(stripeCustomerId);
+    await this.paymentsRepository.syncDefaultPaymentMethodFlag({
+      stripeCustomerId,
+      defaultPaymentMethodId,
+    });
+  }
+
+  /** Syncs customer payment method attachment and detach events locally. */
+  private async handlePaymentMethodEvent(event: Stripe.Event) {
+    const paymentMethod = event.data.object as Stripe.PaymentMethod;
+    const status =
+      event.type === 'payment_method.detached' ? 'detached' : 'attached';
+    await this.paymentsRepository.upsertPaymentMethodState(
+      paymentMethod,
+      status,
+    );
+
+    const stripeCustomerId =
+      typeof paymentMethod.customer === 'string'
+        ? paymentMethod.customer
+        : paymentMethod.customer?.id;
+
+    if (!stripeCustomerId) {
+      return;
+    }
+
+    const defaultPaymentMethodId =
+      await this.paymentsRepository.getDefaultPaymentMethodId(stripeCustomerId);
+    await this.paymentsRepository.syncDefaultPaymentMethodFlag({
+      stripeCustomerId,
+      defaultPaymentMethodId,
+    });
   }
 }

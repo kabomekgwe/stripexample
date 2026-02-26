@@ -5,6 +5,7 @@ import {
   Headers,
   Param,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -16,8 +17,11 @@ import {
 } from '@nestjs/swagger';
 import { AttachPaymentMethodDto } from './dto/attach-payment-method.dto';
 import { CreateSetupIntentDto } from './dto/create-setup-intent.dto';
+import { DetachPaymentMethodDto } from './dto/detach-payment-method.dto';
 import { SetDefaultPaymentMethodDto } from './dto/set-default-payment-method.dto';
 import { ListCustomerPaymentMethodsDto } from './dto/list-customer-payment-methods.dto';
+import { PaymentMethodPolicyContextDto } from './dto/payment-method-policy-context.dto';
+import { UpsertPaymentMethodPolicyDto } from './dto/upsert-payment-method-policy.dto';
 import { PaymentsService } from './payments.service';
 
 @Controller('payments')
@@ -30,8 +34,24 @@ export class PaymentsController {
   @Get('payment-methods/enabled')
   @ApiOperation({ summary: 'List enabled account payment methods' })
   @ApiOkResponse({ description: 'Enabled payment method types' })
-  listEnabledPaymentMethods() {
-    return this.paymentsService.listEnabledPaymentMethods();
+  listEnabledPaymentMethods(@Query() query: PaymentMethodPolicyContextDto) {
+    return this.paymentsService.listEnabledPaymentMethods(query);
+  }
+
+  /** Lists configured payment method policies for the org account. */
+  @Get('payment-methods/policies')
+  @ApiOperation({ summary: 'List org payment method policies' })
+  @ApiOkResponse({ description: 'Policy rows' })
+  listPaymentMethodPolicies() {
+    return this.paymentsService.listPaymentMethodPolicies();
+  }
+
+  /** Creates or updates an org policy for a payment method type. */
+  @Put('payment-methods/policies')
+  @ApiOperation({ summary: 'Upsert org payment method policy' })
+  @ApiOkResponse({ description: 'Upserted policy' })
+  upsertPaymentMethodPolicy(@Body() dto: UpsertPaymentMethodPolicyDto) {
+    return this.paymentsService.upsertPaymentMethodPolicy(dto);
   }
 
   /** Attaches a payment method to a customer and optionally sets it as default. */
@@ -86,6 +106,33 @@ export class PaymentsController {
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     return this.paymentsService.setDefaultPaymentMethod(
+      dto,
+      idempotencyKey ?? randomUUID(),
+    );
+  }
+
+  /** Returns current default payment method for a customer. */
+  @Get('customers/:customerId/payment-methods/default')
+  @ApiOperation({ summary: 'Get customer default payment method' })
+  @ApiOkResponse({ description: 'Customer default payment method' })
+  getDefaultPaymentMethod(@Param('customerId') customerId: string) {
+    return this.paymentsService.getDefaultPaymentMethod(customerId);
+  }
+
+  /** Detaches a payment method from a customer. */
+  @Post('payment-methods/detach')
+  @ApiOperation({ summary: 'Detach payment method from customer' })
+  @ApiHeader({
+    name: 'idempotency-key',
+    required: false,
+    description: 'Optional idempotency key for safe retries',
+  })
+  @ApiOkResponse({ description: 'Detached payment method details' })
+  detachPaymentMethod(
+    @Body() dto: DetachPaymentMethodDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.paymentsService.detachPaymentMethod(
       dto,
       idempotencyKey ?? randomUUID(),
     );

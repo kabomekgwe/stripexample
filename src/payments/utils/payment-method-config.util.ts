@@ -1,5 +1,7 @@
+import type { PaymentMethodType } from '../constants/payment-method-types';
+
 export type PaymentMethodConfig = {
-  allowed: string[];
+  allowed: PaymentMethodType[];
   captureMethod: 'automatic' | 'automatic_async' | 'manual';
 };
 

@@ -21,4 +21,10 @@ export class CreatePaymentIntentDto {
   @IsString()
   @MaxLength(120)
   description?: string;
+
+  @ApiPropertyOptional({ example: 'US' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  customerCountry?: string;
 }
