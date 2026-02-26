@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, lt } from 'drizzle-orm';
 import { DatabaseService } from '../infra/database/database.service';
 import { billingUsageMonthly } from '../infra/database/schema';
 
@@ -65,6 +65,23 @@ export class UsageRepository {
     return result ?? null;
   }
 
+  /** Lists finalized usage rows visible to clients from next-month day one. */
+  async listVisibleForClient(now: Date) {
+    const currentPeriod = `${now.getUTCFullYear()}-${String(
+      now.getUTCMonth() + 1,
+    ).padStart(2, '0')}`;
+
+    return this.databaseService.db
+      .select()
+      .from(billingUsageMonthly)
+      .where(
+        and(
+          eq(billingUsageMonthly.finalized, true),
+          lt(billingUsageMonthly.billingPeriod, currentPeriod),
+        ),
+      );
+  }
+
   /** Marks monthly usage as finalized for billing closure. */
   async markFinalized(id: string) {
     await this.databaseService.db
@@ -73,7 +90,7 @@ export class UsageRepository {
       .where(eq(billingUsageMonthly.id, id));
   }
 
-  /** Stores Stripe invoice item linkage for usage billing. */
+  /** Stores Stripe usage event linkage for usage billing. */
   async attachStripeInvoiceItem(id: string, stripeInvoiceItemId: string) {
     await this.databaseService.db
       .update(billingUsageMonthly)

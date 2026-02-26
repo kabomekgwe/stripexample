@@ -35,6 +35,7 @@ Required:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `BILLING_EMAIL_WEBHOOK_URL` (optional, for internal invoice email delivery)
+- `BILLING_USAGE_METER_EVENT_NAME` (optional, default `monthly_usage`)
 
 Swagger (optional):
 
@@ -84,6 +85,7 @@ Services:
 - `POST /checkout/sessions`
 - `POST /refunds`
 - `POST /billing/usage-monthly`
+- `GET /billing/usage-monthly/visible`
 - `POST /billing/usage-subscription`
 - `POST /billing/usage-subscription/batch`
 - `POST /webhooks/stripe`
@@ -106,8 +108,9 @@ Production-safe behavior:
 1. Send `POST /billing/usage-monthly` with company usage for `YYYY-MM`.
 2. Service stores/upserts usage in DB.
 3. Outbox event is created.
-4. Scheduled billing processor finalizes usage and creates Stripe invoice item.
-5. DB stores Stripe linkage and marks usage as finalized.
+4. On the 25th (`0 5 25 * *`), scheduler processes usage rows and writes Stripe meter events.
+5. DB stores Stripe meter event linkage and marks usage as finalized.
+6. Usage rows become client-visible from next month day one via `GET /billing/usage-monthly/visible`.
 
 For Stripe usage-based subscriptions (meters), call `POST /billing/usage-subscription`.
 It writes Stripe Billing Meter Events with payload keys:
@@ -169,6 +172,7 @@ Batch meter events:
 1. Create Billing Meter(s) in Stripe and set mapping keys:
    - Customer key: `stripe_customer_id`
    - Value key: `value`
+   - Meter event name should match `BILLING_USAGE_METER_EVENT_NAME` (default `monthly_usage`)
 2. Ensure your pricing model is configured to consume meter usage for invoicing.
 3. Configure webhook endpoint to this API (`POST /webhooks/stripe`) and subscribe to at least:
    - `invoice.finalized`

@@ -48,6 +48,41 @@ export class OutboxService {
       payload: Record<string, unknown>;
     }) => Promise<void>,
   ) {
+    /**
+     * DETAILED OUTBOX PROCESSING CONTRACT
+     * -------------------------------------------------------------------------
+     * This method is the single execution engine for both:
+     * - process(...)                -> consume all pending topics
+     * - processByTopics([...])      -> consume only specific topic families
+     *
+     * Why this exists:
+     * - Prevent duplicate event-loop logic in multiple places.
+     * - Keep retry semantics and state transitions consistent.
+     * - Preserve DRY across every async integration pipeline.
+     *
+     * Delivery semantics:
+     * - At-least-once delivery (not exactly-once).
+     * - If the handler succeeds, event is marked `done`.
+     * - If the handler throws, event remains pending and is rescheduled.
+     *
+     * Ordering semantics:
+     * - Repository returns events in ascending created_at order (FIFO intent).
+     * - FIFO is best-effort within the selected scope (global or topic-filtered).
+     * - Cross-worker strict global ordering is intentionally not guaranteed.
+     *
+     * Idempotency expectation:
+     * - Because delivery is at-least-once, downstream handlers MUST be idempotent.
+     * - If a handler side effect can be retried safely, the system remains robust.
+     *
+     * Failure strategy:
+     * - We do not stop the batch on first failure.
+     * - Each failed event gets retry metadata (attempt count, next run time, error).
+     * - Remaining events continue processing to maximize throughput and isolation.
+     *
+     * Input args behavior:
+     * - topics: narrows consumption to dedicated streams (e.g., invoicing only).
+     * - limit: protects worker runtime and DB load by bounded batch size.
+     */
     const events = await this.outboxRepository.fetchPending(args);
     for (const event of events) {
       try {
@@ -58,6 +93,24 @@ export class OutboxService {
         });
         await this.outboxRepository.markDone(event.id);
       } catch (error) {
+        /**
+         * DETAILED FAILURE BEHAVIOR
+         * ---------------------------------------------------------------------
+         * Important: we intentionally do NOT rethrow here.
+         *
+         * Reasoning:
+         * - Throwing would abort the entire batch and starve unrelated events.
+         * - A single failing integration should not block all other topics.
+         *
+         * What we do instead:
+         * 1) Log event-level failure for observability.
+         * 2) Persist retry metadata (attempt increment + exponential backoff).
+         * 3) Continue to next event.
+         *
+         * Operational benefit:
+         * - Better resilience under partial outage scenarios.
+         * - Predictable recovery once dependency recovers.
+         */
         this.logger.error(`Outbox event failed: ${event.id}`);
         await this.outboxRepository.markRetry(
           event.id,

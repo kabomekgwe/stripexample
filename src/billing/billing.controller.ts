@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RecordSubscriptionUsageBatchDto } from './dto/record-subscription-usage-batch.dto';
 import { RecordMonthlyUsageDto } from './dto/record-monthly-usage.dto';
@@ -33,6 +33,14 @@ export class BillingController {
   @ApiOkResponse({ description: 'Batch usage meter result' })
   recordSubscriptionUsageBatch(@Body() dto: RecordSubscriptionUsageBatchDto) {
     return this.usageBillingService.recordSubscriptionUsageBatch(dto);
+  }
+
+  /** Returns finalized monthly usage visible to clients on next-month day one. */
+  @Get('usage-monthly/visible')
+  @ApiOperation({ summary: 'List client-visible monthly usage rows' })
+  @ApiOkResponse({ description: 'Visible monthly usage rows' })
+  listVisibleMonthlyUsage() {
+    return this.usageBillingService.listVisibleMonthlyUsage();
   }
 
   /** Triggers processing of queued monthly usage outbox events. */

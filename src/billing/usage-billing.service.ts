@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { RedisService } from '../infra/redis/redis.service';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
@@ -15,6 +16,7 @@ export class UsageBillingService {
     private readonly outboxService: OutboxService,
     private readonly stripeClientService: StripeClientService,
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
   ) {}
 
   /** Stores monthly usage in DB and enqueues asynchronous Stripe sync. */
@@ -96,9 +98,20 @@ export class UsageBillingService {
     };
   }
 
-  @Cron('0 5 1 * *')
-  /** Processes queued usage events and creates Stripe invoice items. */
+  /** Returns finalized monthly usage rows visible to clients. */
+  async listVisibleMonthlyUsage() {
+    return this.usageRepository.listVisibleForClient(new Date());
+  }
+
+  @Cron('0 5 25 * *')
+  /** Processes queued usage events into Stripe meter events on the 25th. */
   async runMonthlyBillingJob() {
+    this.ensureMonthlyBillingWindow();
+
+    const meterEventName =
+      this.configService.get<string>('BILLING_USAGE_METER_EVENT_NAME') ??
+      'monthly_usage';
+
     await this.outboxService.processByTopics(
       ['usage.billing.finalize'],
       async (event) => {
@@ -125,20 +138,19 @@ export class UsageBillingService {
         }
 
         try {
-          const invoiceItem =
-            await this.stripeClientService.client.invoiceItems.create({
-              customer: String(event.payload.stripeCustomerId),
-              amount: usage.amountCents,
-              currency: 'usd',
-              description: `Usage charge for ${usage.billingPeriod}`,
-              metadata: {
-                internalUsageId: usage.id,
+          const meterEvent =
+            await this.stripeClientService.client.billing.meterEvents.create({
+              event_name: meterEventName,
+              payload: {
+                stripe_customer_id: String(event.payload.stripeCustomerId),
+                value: String(usage.usageQuantity),
               },
+              identifier: `monthly-usage-${usage.id}`,
             });
 
           await this.usageRepository.attachStripeInvoiceItem(
             usage.id,
-            invoiceItem.id,
+            meterEvent.identifier,
           );
           await this.usageRepository.markFinalized(usage.id);
         } finally {
@@ -146,5 +158,20 @@ export class UsageBillingService {
         }
       },
     );
+  }
+
+  private ensureMonthlyBillingWindow() {
+    const isProduction =
+      this.configService.get<string>('NODE_ENV') === 'production';
+    if (!isProduction) {
+      return;
+    }
+
+    const dayOfMonth = new Date().getUTCDate();
+    if (dayOfMonth < 25) {
+      throw new BadRequestException(
+        'Monthly usage billing can be processed in production only on or after day 25.',
+      );
+    }
   }
 }
