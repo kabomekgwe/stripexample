@@ -14,7 +14,7 @@ Production-oriented NestJS Stripe integration where your database is the source 
 - Drizzle ORM schema and repositories for internal billing state
 - Redis-backed idempotency and webhook/event locks
 - Usage-based monthly billing workflow (DB amount -> Stripe invoice item)
-- Docker + docker-compose with API, Postgres, Redis
+- Docker + docker-compose with API, SQLite, Redis
 
 ## Key architecture decisions
 
@@ -57,7 +57,7 @@ docker compose up --build
 Services:
 
 - API: `http://localhost:3000`
-- Postgres: `localhost:5432`
+- SQLite file: `/app/data/sqlite.db` (inside container)
 - Redis: `localhost:6379`
 
 ## Main endpoints
