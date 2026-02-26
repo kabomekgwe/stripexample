@@ -66,6 +66,8 @@ Services:
 ## Main endpoints
 
 - `POST /customers`
+- `GET /customers`
+- `POST /customers/cache/sync`
 - `GET /customers/:id`
 - `GET /payments/payment-methods/enabled`
 - `GET /payments/payment-methods/policies`
@@ -121,6 +123,19 @@ It writes Stripe Billing Meter Events with payload keys:
 Use `POST /billing/usage-subscription/batch` to send multiple meter events in one request.
 
 Subscription lifecycle APIs were intentionally removed from routing in favor of usage metering.
+
+## Redis customer snapshot sync
+
+- Customer list is served from Redis via `GET /customers`.
+- Cache keys:
+  - `cache:customers:list:v1`
+  - `cache:customers:list:last_synced_at`
+- Sync triggers:
+  - on app startup (module init)
+  - at `01:00` and `13:00` UTC every day (`0 1,13 * * *`)
+  - on demand via `POST /customers/cache/sync`
+- Cache-miss behavior:
+  - if Redis snapshot is missing, API hydrates from DB once, writes snapshot, then serves Redis-backed data.
 
 ## Usage metering request examples
 
