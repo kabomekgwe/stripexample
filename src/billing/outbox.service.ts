@@ -25,7 +25,30 @@ export class OutboxService {
       payload: Record<string, unknown>;
     }) => Promise<void>,
   ) {
-    const events = await this.outboxRepository.fetchPending();
+    return this.processPending({}, handler);
+  }
+
+  /** Processes pending outbox events for selected topics only. */
+  async processByTopics(
+    topics: string[],
+    handler: (event: {
+      topic: string;
+      aggregateId: string;
+      payload: Record<string, unknown>;
+    }) => Promise<void>,
+  ) {
+    return this.processPending({ topics }, handler);
+  }
+
+  private async processPending(
+    args: { topics?: string[]; limit?: number },
+    handler: (event: {
+      topic: string;
+      aggregateId: string;
+      payload: Record<string, unknown>;
+    }) => Promise<void>,
+  ) {
+    const events = await this.outboxRepository.fetchPending(args);
     for (const event of events) {
       try {
         await handler({

@@ -2,13 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
+import { OutboxService } from '../billing/outbox.service';
 import { DatabaseService } from '../infra/database/database.service';
 import {
-  billingInvoices,
   billingPaymentIntents,
   billingRefunds,
-  billingSubscriptions,
 } from '../infra/database/schema';
+import { InvoicesRepository } from '../invoices/invoices.repository';
 import { PaymentsRepository } from '../payments/payments.repository';
 import { RedisService } from '../infra/redis/redis.service';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
@@ -21,6 +21,8 @@ export class WebhooksService {
     private readonly stripeClientService: StripeClientService,
     private readonly webhooksRepository: WebhooksRepository,
     private readonly paymentsRepository: PaymentsRepository,
+    private readonly invoicesRepository: InvoicesRepository,
+    private readonly outboxService: OutboxService,
     private readonly redisService: RedisService,
     private readonly databaseService: DatabaseService,
     private readonly configService: ConfigService,
@@ -75,11 +77,6 @@ export class WebhooksService {
 
   /** Routes events to the right domain-specific handler. */
   private async dispatch(event: Stripe.Event): Promise<void> {
-    if (event.type.startsWith('customer.subscription.')) {
-      await this.handleSubscriptionEvent(event);
-      return;
-    }
-
     if (event.type.startsWith('invoice.')) {
       await this.handleInvoiceEvent(event);
       return;
@@ -108,36 +105,66 @@ export class WebhooksService {
     }
   }
 
-  /** Applies subscription lifecycle updates from Stripe to local DB. */
-  private async handleSubscriptionEvent(event: Stripe.Event) {
-    const subscription = event.data.object as Stripe.Subscription;
-    const internalSubscriptionId =
-      subscription.metadata?.internalSubscriptionId;
-    if (!internalSubscriptionId) {
-      return;
-    }
-
-    await this.databaseService.db
-      .update(billingSubscriptions)
-      .set({
-        status: subscription.status,
-        updatedAt: new Date(),
-      })
-      .where(eq(billingSubscriptions.id, internalSubscriptionId));
-  }
-
   /** Applies invoice status and amount updates from Stripe to local DB. */
   private async handleInvoiceEvent(event: Stripe.Event) {
     const invoice = event.data.object as Stripe.Invoice;
-    await this.databaseService.db
-      .update(billingInvoices)
-      .set({
-        status: invoice.status ?? 'draft',
-        amountDueCents: invoice.amount_due,
-        amountPaidCents: invoice.amount_paid,
-        updatedAt: new Date(),
-      })
-      .where(eq(billingInvoices.stripeInvoiceId, invoice.id));
+    const internalInvoice = await this.invoicesRepository.upsertFromStripe({
+      stripeInvoiceId: invoice.id,
+      amountDueCents: invoice.amount_due,
+      amountPaidCents: invoice.amount_paid,
+      status: invoice.status ?? 'draft',
+      currency: invoice.currency,
+    });
+
+    if (event.type !== 'invoice.finalized' || !internalInvoice) {
+      if (event.type === 'invoice.payment_succeeded' && internalInvoice) {
+        await this.enqueueInvoiceEmailEvent('billing.invoice-paid', {
+          internalInvoiceId: internalInvoice.id,
+          invoice,
+        });
+      }
+
+      if (event.type === 'invoice.payment_failed' && internalInvoice) {
+        await this.enqueueInvoiceEmailEvent('billing.invoice-payment-failed', {
+          internalInvoiceId: internalInvoice.id,
+          invoice,
+        });
+      }
+
+      return;
+    }
+
+    await this.enqueueInvoiceEmailEvent('billing.invoice-issued', {
+      internalInvoiceId: internalInvoice.id,
+      invoice,
+    });
+  }
+
+  private async enqueueInvoiceEmailEvent(
+    topic:
+      | 'billing.invoice-issued'
+      | 'billing.invoice-paid'
+      | 'billing.invoice-payment-failed',
+    args: { internalInvoiceId: string; invoice: Stripe.Invoice },
+  ) {
+    const stripeCustomerId =
+      typeof args.invoice.customer === 'string'
+        ? args.invoice.customer
+        : args.invoice.customer?.id;
+
+    await this.outboxService.enqueue({
+      topic,
+      aggregateId: args.internalInvoiceId,
+      payload: {
+        invoiceId: args.internalInvoiceId,
+        stripeInvoiceId: args.invoice.id,
+        stripeCustomerId,
+        amountDueCents: args.invoice.amount_due,
+        amountPaidCents: args.invoice.amount_paid,
+        currency: args.invoice.currency,
+        status: args.invoice.status ?? 'draft',
+      },
+    });
   }
 
   /** Applies payment intent status updates from Stripe to local DB. */

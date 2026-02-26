@@ -1,13 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { InvoicesService } from '../../invoices/invoices.service';
 import { DatabaseService } from '../../infra/database/database.service';
 import {
   billingCheckoutSessions,
-  billingInvoices,
   billingPaymentIntents,
   billingRefunds,
-  billingSubscriptions,
 } from '../../infra/database/schema';
 import { RefundsService } from '../../refunds/refunds.service';
 import type { CreateRefundDto } from '../../refunds/dto/create-refund.dto';
@@ -21,82 +19,42 @@ export class BillingHistoryService {
   ) {}
 
   async getTimeline(customerId: string) {
-    const [paymentIntents, subscriptions, checkoutSessions] = await Promise.all(
-      [
-        this.databaseService.db
-          .select()
-          .from(billingPaymentIntents)
-          .where(eq(billingPaymentIntents.customerId, customerId))
-          .orderBy(desc(billingPaymentIntents.createdAt)),
-        this.databaseService.db
-          .select()
-          .from(billingSubscriptions)
-          .where(eq(billingSubscriptions.customerId, customerId))
-          .orderBy(desc(billingSubscriptions.createdAt)),
-        this.databaseService.db
-          .select()
-          .from(billingCheckoutSessions)
-          .where(eq(billingCheckoutSessions.customerId, customerId))
-          .orderBy(desc(billingCheckoutSessions.createdAt)),
-      ],
-    );
+    const [paymentIntents, checkoutSessions] = await Promise.all([
+      this.databaseService.db
+        .select()
+        .from(billingPaymentIntents)
+        .where(eq(billingPaymentIntents.customerId, customerId))
+        .orderBy(desc(billingPaymentIntents.createdAt)),
+      this.databaseService.db
+        .select()
+        .from(billingCheckoutSessions)
+        .where(eq(billingCheckoutSessions.customerId, customerId))
+        .orderBy(desc(billingCheckoutSessions.createdAt)),
+    ]);
 
     const paymentIntentIds = paymentIntents.map((item) => item.id);
-    const subscriptionIds = subscriptions.map((item) => item.id);
 
-    const [refunds, invoices] = await Promise.all([
-      paymentIntentIds.length
-        ? this.databaseService.db
-            .select()
-            .from(billingRefunds)
-            .where(inArray(billingRefunds.paymentIntentId, paymentIntentIds))
-            .orderBy(desc(billingRefunds.createdAt))
-        : [],
-      subscriptionIds.length
-        ? this.databaseService.db
-            .select()
-            .from(billingInvoices)
-            .where(inArray(billingInvoices.subscriptionId, subscriptionIds))
-            .orderBy(desc(billingInvoices.createdAt))
-        : [],
-    ]);
+    const refunds = await (paymentIntentIds.length
+      ? this.databaseService.db
+          .select()
+          .from(billingRefunds)
+          .where(inArray(billingRefunds.paymentIntentId, paymentIntentIds))
+          .orderBy(desc(billingRefunds.createdAt))
+      : []);
+
+    const invoices = await this.invoicesService.listForCompany();
 
     return {
       customerId,
       paymentIntents,
       refunds,
-      subscriptions,
       invoices,
       checkoutSessions,
     };
   }
 
-  async getInvoice(customerId: string, invoiceId: string) {
-    const invoice = await this.invoicesService.getById(invoiceId);
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found.');
-    }
-
-    if (!invoice.subscriptionId) {
-      return invoice;
-    }
-
-    const [subscription] = await this.databaseService.db
-      .select({ customerId: billingSubscriptions.customerId })
-      .from(billingSubscriptions)
-      .where(
-        and(
-          eq(billingSubscriptions.id, invoice.subscriptionId),
-          eq(billingSubscriptions.customerId, customerId),
-        ),
-      )
-      .limit(1);
-
-    if (!subscription) {
-      throw new NotFoundException('Invoice not found for customer.');
-    }
-
-    return invoice;
+  async getInvoice(_customerId: string, invoiceId: string) {
+    return this.invoicesService.getById(invoiceId);
   }
 
   async createRefundForCustomer(

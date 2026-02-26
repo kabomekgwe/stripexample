@@ -17,7 +17,7 @@ export class BillingHistoryController {
   @Get('timeline')
   @ApiOperation({ summary: 'Get billing timeline for customer' })
   @ApiOkResponse({
-    description: 'Invoices, intents, refunds, subscriptions, and checkouts',
+    description: 'Invoices, intents, refunds, and checkouts',
   })
   getTimeline(@Param('customerId') customerId: string) {
     return this.billingHistoryService.getTimeline(customerId);

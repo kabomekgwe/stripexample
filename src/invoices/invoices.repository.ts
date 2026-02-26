@@ -45,7 +45,6 @@ export class InvoicesRepository {
     amountPaidCents: number;
     status: string;
     currency: string;
-    invoiceUrl: string | null;
   }) {
     const existing = await this.findByStripeInvoiceId(args.stripeInvoiceId);
     if (existing) {
@@ -56,7 +55,6 @@ export class InvoicesRepository {
           amountPaidCents: args.amountPaidCents,
           status: args.status,
           currency: args.currency,
-          invoiceUrl: args.invoiceUrl,
           updatedAt: new Date(),
         })
         .where(eq(billingInvoices.id, existing.id));
@@ -72,7 +70,6 @@ export class InvoicesRepository {
         amountPaidCents: args.amountPaidCents,
         status: args.status,
         currency: args.currency,
-        invoiceUrl: args.invoiceUrl,
       })
       .returning({ id: billingInvoices.id });
 

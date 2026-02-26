@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, lte } from 'drizzle-orm';
+import { and, asc, eq, inArray, lte } from 'drizzle-orm';
 import { DatabaseService } from '../infra/database/database.service';
 import { integrationOutbox } from '../infra/database/schema';
 
@@ -22,16 +22,20 @@ export class OutboxRepository {
   }
 
   /** Returns pending outbox events ready to run now. */
-  async fetchPending(limit = 20) {
+  async fetchPending(args?: { limit?: number; topics?: string[] }) {
+    const limit = args?.limit ?? 20;
+    const byStatusAndRunAt = and(
+      eq(integrationOutbox.status, 'pending'),
+      lte(integrationOutbox.nextRunAt, new Date()),
+    );
+    const whereClause = args?.topics?.length
+      ? and(byStatusAndRunAt, inArray(integrationOutbox.topic, args.topics))
+      : byStatusAndRunAt;
+
     return this.databaseService.db
       .select()
       .from(integrationOutbox)
-      .where(
-        and(
-          eq(integrationOutbox.status, 'pending'),
-          lte(integrationOutbox.nextRunAt, new Date()),
-        ),
-      )
+      .where(whereClause)
       .orderBy(asc(integrationOutbox.createdAt))
       .limit(limit);
   }

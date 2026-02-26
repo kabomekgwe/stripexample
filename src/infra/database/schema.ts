@@ -17,9 +17,6 @@ const timestampColumn = (name: string) =>
     .notNull()
     .$defaultFn(() => new Date());
 
-const optionalTimestampColumn = (name: string) =>
-  integer(name, { mode: 'timestamp_ms' });
-
 export const billingCustomers = sqliteTable(
   'billing_customers',
   {
@@ -58,27 +55,6 @@ export const billingPaymentIntents = sqliteTable(
   ],
 );
 
-export const billingSubscriptions = sqliteTable(
-  'billing_subscriptions',
-  {
-    id: idColumn(),
-    customerId: text('customer_id').notNull(),
-    planCode: text('plan_code').notNull(),
-    status: text('status').notNull().default('pending'),
-    stripeSubscriptionId: text('stripe_subscription_id'),
-    currentPeriodStart: optionalTimestampColumn('current_period_start'),
-    currentPeriodEnd: optionalTimestampColumn('current_period_end'),
-    canceledAt: optionalTimestampColumn('canceled_at'),
-    createdAt: timestampColumn('created_at'),
-    updatedAt: timestampColumn('updated_at'),
-  },
-  (table) => [
-    uniqueIndex('billing_subscriptions_stripe_subscription_id_idx').on(
-      table.stripeSubscriptionId,
-    ),
-  ],
-);
-
 export const billingCheckoutSessions = sqliteTable(
   'billing_checkout_sessions',
   {
@@ -103,13 +79,11 @@ export const billingInvoices = sqliteTable(
   'billing_invoices',
   {
     id: idColumn(),
-    subscriptionId: text('subscription_id'),
     stripeInvoiceId: text('stripe_invoice_id'),
     amountDueCents: integer('amount_due_cents').notNull().default(0),
     amountPaidCents: integer('amount_paid_cents').notNull().default(0),
     currency: text('currency').notNull().default('usd'),
     status: text('status').notNull().default('draft'),
-    invoiceUrl: text('invoice_url'),
     createdAt: timestampColumn('created_at'),
     updatedAt: timestampColumn('updated_at'),
   },
@@ -281,7 +255,6 @@ export const billingCustomerPaymentMethods = sqliteTable(
 export const schema = {
   billingCustomers,
   billingPaymentIntents,
-  billingSubscriptions,
   billingCheckoutSessions,
   billingInvoices,
   billingRefunds,

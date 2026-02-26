@@ -1,10 +1,10 @@
-# Stripe Billing Service (DB-First)
+# Stripe Usage Billing Service (DB-First)
 
 Production-oriented NestJS Stripe integration where your database is the source of truth and Stripe is synchronized as an external processor.
 
 ## What is implemented
 
-- Stripe domains: Customers, PaymentIntents, Checkout Sessions, Subscriptions, Invoices, Refunds, Webhooks
+- Stripe domains: Customers, PaymentIntents, Checkout Sessions, Invoices, Refunds, Webhooks, Billing Meters
 - Shared payments utilities:
   - `src/payments/utils/account.util.ts`
   - `src/payments/utils/payment-method-config.util.ts`
@@ -14,6 +14,7 @@ Production-oriented NestJS Stripe integration where your database is the source 
 - Drizzle ORM schema and repositories for internal billing state
 - Redis-backed idempotency and webhook/event locks
 - Usage-based monthly billing workflow (DB amount -> Stripe invoice item)
+- Usage-based metering APIs (single and batch meter event ingestion)
 - Docker + docker-compose with API, SQLite, Redis
 
 ## Key architecture decisions
@@ -33,6 +34,7 @@ Required:
 - `REDIS_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- `BILLING_EMAIL_WEBHOOK_URL` (optional, for internal invoice email delivery)
 
 Swagger (optional):
 
@@ -80,14 +82,10 @@ Services:
 - `POST /payment-intents`
 - `GET /payment-intents/:id`
 - `POST /checkout/sessions`
-- `POST /subscriptions`
-- `PATCH /subscriptions/:id`
-- `POST /subscriptions/:id/cancel`
-- `GET /subscriptions/:id`
-- `GET /invoices`
-- `GET /invoices/:id`
 - `POST /refunds`
 - `POST /billing/usage-monthly`
+- `POST /billing/usage-subscription`
+- `POST /billing/usage-subscription/batch`
 - `POST /webhooks/stripe`
 - `GET /health`
 
@@ -111,7 +109,73 @@ Production-safe behavior:
 4. Scheduled billing processor finalizes usage and creates Stripe invoice item.
 5. DB stores Stripe linkage and marks usage as finalized.
 
+For Stripe usage-based subscriptions (meters), call `POST /billing/usage-subscription`.
+It writes Stripe Billing Meter Events with payload keys:
+
+- `stripe_customer_id`
+- `value`
+
+Use `POST /billing/usage-subscription/batch` to send multiple meter events in one request.
+
+Subscription lifecycle APIs were intentionally removed from routing in favor of usage metering.
+
+## Usage metering request examples
+
+Single meter event:
+
+```json
+{
+  "eventName": "api_tokens_used",
+  "stripeCustomerId": "cus_123456789",
+  "value": 2450000,
+  "identifier": "usage-evt-2026-02-cus_123456789",
+  "timestamp": 1767139200
+}
+```
+
+Batch meter events:
+
+```json
+{
+  "continueOnError": true,
+  "events": [
+    {
+      "eventName": "api_tokens_used",
+      "stripeCustomerId": "cus_123456789",
+      "value": 1200,
+      "identifier": "usage-evt-1"
+    },
+    {
+      "eventName": "api_tokens_used",
+      "stripeCustomerId": "cus_987654321",
+      "value": 980,
+      "identifier": "usage-evt-2"
+    }
+  ]
+}
+```
+
 ## Notes
 
-- This code includes schema definitions but does not include generated migration files yet.
-- Recommended next step is to add `drizzle-kit` migration generation and CI migration checks.
+- Stripe invoice objects still exist for payment accounting, but customer-facing invoice emails are emitted from this API.
+- Configure `BILLING_EMAIL_WEBHOOK_URL` to receive invoice email events from outbox topics:
+  - `billing.invoice-issued`
+  - `billing.invoice-paid`
+  - `billing.invoice-payment-failed`
+- Disable Stripe customer invoice emails in Stripe Dashboard to avoid duplicate customer notifications.
+
+## Stripe dashboard setup checklist
+
+1. Create Billing Meter(s) in Stripe and set mapping keys:
+   - Customer key: `stripe_customer_id`
+   - Value key: `value`
+2. Ensure your pricing model is configured to consume meter usage for invoicing.
+3. Configure webhook endpoint to this API (`POST /webhooks/stripe`) and subscribe to at least:
+   - `invoice.finalized`
+   - `invoice.payment_succeeded`
+   - `invoice.payment_failed`
+   - `payment_intent.*`
+   - `setup_intent.*`
+   - `payment_method.*`
+4. Disable Stripe customer-facing invoice/subscription emails to avoid duplicate sends.
+5. Set `BILLING_EMAIL_WEBHOOK_URL` so this API can forward invoice email events to your internal mail service.
