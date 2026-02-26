@@ -8,6 +8,7 @@ import {
 import Stripe from 'stripe';
 import { CustomersRepository } from '../customers/customers.repository';
 import { IdempotencyService } from '../infra/idempotency/idempotency.service';
+import { addSpanAttributes, runInSpan } from '../observability/tracing.util';
 import type { PaymentMethodType } from './constants/payment-method-types';
 import { PAYMENT_METHOD_TYPES } from './constants/payment-method-types';
 import { AttachPaymentMethodDto } from './dto/attach-payment-method.dto';
@@ -161,6 +162,7 @@ export class PaymentsService {
 
   /** Creates a setup intent to collect and save a payment method without charging. */
   async createSetupIntent(dto: CreateSetupIntentDto, idempotencyKey: string) {
+    addSpanAttributes({ 'billing.customer.id': dto.customerId });
     return this.runIdempotent(
       'payment-methods.setup-intents.create',
       idempotencyKey,
@@ -192,6 +194,10 @@ export class PaymentsService {
 
   /** Confirms an existing setup intent using a payment method id for API testing. */
   async confirmSetupIntent(dto: ConfirmSetupIntentDto, idempotencyKey: string) {
+    addSpanAttributes({
+      'billing.customer.id': dto.customerId,
+      'stripe.setup_intent.id': dto.setupIntentId,
+    });
     return this.runIdempotent(
       'payment-methods.setup-intents.confirm',
       idempotencyKey,
@@ -255,6 +261,10 @@ export class PaymentsService {
     dto: SetDefaultPaymentMethodDto,
     idempotencyKey: string,
   ) {
+    addSpanAttributes({
+      'billing.customer.id': dto.customerId,
+      'stripe.payment_method.id': dto.paymentMethodId,
+    });
     return this.runIdempotent(
       'payment-methods.default.set',
       idempotencyKey,
@@ -388,24 +398,35 @@ export class PaymentsService {
     idempotencyKey: string,
     fn: () => Promise<T>,
   ) {
-    const scopedKey = buildIdempotencyNamespace(operation, idempotencyKey);
-    const cached = await this.idempotencyService.getStoredResult<T>(scopedKey);
-    if (cached) {
-      return cached;
-    }
+    return runInSpan(
+      `payments.${operation}`,
+      {
+        'code.function': 'runIdempotent',
+        'idempotency.operation': operation,
+      },
+      async () => {
+        const scopedKey = buildIdempotencyNamespace(operation, idempotencyKey);
+        const cached =
+          await this.idempotencyService.getStoredResult<T>(scopedKey);
+        if (cached) {
+          addSpanAttributes({ 'idempotency.cache_hit': true });
+          return cached;
+        }
 
-    if (!(await this.idempotencyService.start(scopedKey))) {
-      throw new ConflictException('Request is already being processed.');
-    }
+        if (!(await this.idempotencyService.start(scopedKey))) {
+          throw new ConflictException('Request is already being processed.');
+        }
 
-    try {
-      const result = await fn();
-      await this.idempotencyService.complete(scopedKey, result);
-      return result;
-    } catch (error) {
-      await this.idempotencyService.clear(scopedKey);
-      throw error;
-    }
+        try {
+          const result = await fn();
+          await this.idempotencyService.complete(scopedKey, result);
+          return result;
+        } catch (error) {
+          await this.idempotencyService.clear(scopedKey);
+          throw error;
+        }
+      },
+    );
   }
 
   private async listAccountEnabledPaymentMethods(): Promise<

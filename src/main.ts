@@ -3,13 +3,21 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Request, Response, NextFunction } from 'express';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { shutdownTelemetry, startTelemetry } from './observability/telemetry';
 
 async function bootstrap() {
   /**
    * Starts the NestJS application with strict request validation and raw body support.
    */
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  await startTelemetry();
+
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true,
+    bufferLogs: true,
+  });
+  app.useLogger(app.get(Logger));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -66,6 +74,18 @@ async function bootstrap() {
       },
     });
   }
+
+  const shutdown = async () => {
+    await app.close();
+    await shutdownTelemetry();
+  };
+
+  process.on('SIGTERM', () => {
+    void shutdown();
+  });
+  process.on('SIGINT', () => {
+    void shutdown();
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }

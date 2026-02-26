@@ -1,12 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { PinoLogger } from 'nestjs-pino';
+import { addSpanAttributes, runInSpan } from '../observability/tracing.util';
 import { OutboxRepository } from './outbox.repository';
 
 @Injectable()
 export class OutboxService {
-  private readonly logger = new Logger(OutboxService.name);
-
   /** Creates the outbox service with retry-aware processing helpers. */
-  constructor(private readonly outboxRepository: OutboxRepository) {}
+  constructor(
+    private readonly outboxRepository: OutboxRepository,
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(OutboxService.name);
+  }
 
   /** Adds an event into the outbox queue. */
   async enqueue(args: {
@@ -83,41 +88,62 @@ export class OutboxService {
      * - topics: narrows consumption to dedicated streams (e.g., invoicing only).
      * - limit: protects worker runtime and DB load by bounded batch size.
      */
-    const events = await this.outboxRepository.fetchPending(args);
-    for (const event of events) {
-      try {
-        await handler({
-          topic: event.topic,
-          aggregateId: event.aggregateId,
-          payload: event.payload,
-        });
-        await this.outboxRepository.markDone(event.id);
-      } catch (error) {
-        /**
-         * DETAILED FAILURE BEHAVIOR
-         * ---------------------------------------------------------------------
-         * Important: we intentionally do NOT rethrow here.
-         *
-         * Reasoning:
-         * - Throwing would abort the entire batch and starve unrelated events.
-         * - A single failing integration should not block all other topics.
-         *
-         * What we do instead:
-         * 1) Log event-level failure for observability.
-         * 2) Persist retry metadata (attempt increment + exponential backoff).
-         * 3) Continue to next event.
-         *
-         * Operational benefit:
-         * - Better resilience under partial outage scenarios.
-         * - Predictable recovery once dependency recovers.
-         */
-        this.logger.error(`Outbox event failed: ${event.id}`);
-        await this.outboxRepository.markRetry(
-          event.id,
-          event.attempts + 1,
-          error instanceof Error ? error.message : 'Unknown error',
-        );
-      }
-    }
+    return runInSpan(
+      'outbox.process-pending',
+      {
+        'code.function': 'processPending',
+        'outbox.filter.topic_count': args.topics?.length,
+      },
+      async () => {
+        const events = await this.outboxRepository.fetchPending(args);
+        addSpanAttributes({ 'outbox.batch.size': events.length });
+
+        for (const event of events) {
+          try {
+            await runInSpan(
+              'outbox.process-event',
+              {
+                'outbox.event.id': event.id,
+                'messaging.destination.name': event.topic,
+                'outbox.event.attempt': event.attempts,
+              },
+              async () => {
+                await handler({
+                  topic: event.topic,
+                  aggregateId: event.aggregateId,
+                  payload: event.payload,
+                });
+                await this.outboxRepository.markDone(event.id);
+              },
+            );
+          } catch (error) {
+            /**
+             * DETAILED FAILURE BEHAVIOR
+             * ---------------------------------------------------------------------
+             * Important: we intentionally do NOT rethrow here.
+             *
+             * Reasoning:
+             * - Throwing would abort the entire batch and starve unrelated events.
+             * - A single failing integration should not block all other topics.
+             *
+             * What we do instead:
+             * 1) Log event-level failure for observability.
+             * 2) Persist retry metadata (attempt increment + exponential backoff).
+             * 3) Continue to next event.
+             *
+             * Operational benefit:
+             * - Better resilience under partial outage scenarios.
+             * - Predictable recovery once dependency recovers.
+             */
+            this.logger.error(`Outbox event failed: ${event.id}`);
+            await this.outboxRepository.markRetry(
+              event.id,
+              event.attempts + 1,
+              error instanceof Error ? error.message : 'Unknown error',
+            );
+          }
+        }
+      },
+    );
   }
 }

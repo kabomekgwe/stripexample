@@ -6,9 +6,14 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { PinoLogger } from 'nestjs-pino';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  constructor(private readonly logger: PinoLogger) {
+    this.logger.setContext(HttpExceptionFilter.name);
+  }
+
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
@@ -21,10 +26,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const exceptionResponse =
       exception instanceof HttpException ? exception.getResponse() : undefined;
+    const message = this.resolveMessage(exceptionResponse);
+
+    this.logger.error(
+      {
+        err: exception,
+        requestId: request.headers['x-request-id'] ?? null,
+        method: request.method,
+        path: request.url,
+        statusCode: status,
+      },
+      'Request failed',
+    );
 
     response.status(status).json({
       statusCode: status,
-      message: this.resolveMessage(exceptionResponse),
+      message,
       path: request.url,
       method: request.method,
       timestamp: new Date().toISOString(),

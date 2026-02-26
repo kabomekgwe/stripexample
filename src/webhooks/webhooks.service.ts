@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { OutboxService } from '../billing/outbox.service';
 import { DatabaseService } from '../infra/database/database.service';
+import { addSpanAttributes, runInSpan } from '../observability/tracing.util';
 import {
   billingPaymentIntents,
   billingRefunds,
@@ -39,40 +40,56 @@ export class WebhooksService {
 
   /** Deduplicates, locks, persists, and dispatches a Stripe webhook event. */
   async process(event: Stripe.Event): Promise<void> {
-    const lockKey = `lock:webhook:${event.id}`;
-    const acquired = await this.redisService.client.set(
-      lockKey,
-      '1',
-      'EX',
-      60,
-      'NX',
+    return runInSpan(
+      'webhooks.process',
+      {
+        'code.function': 'processWebhookEvent',
+        'messaging.system': 'stripe',
+        'messaging.operation': 'receive',
+        'messaging.message.id': event.id,
+        'messaging.destination.name': event.type,
+        'stripe.event.id': event.id,
+        'stripe.event.type': event.type,
+      },
+      async () => {
+        const lockKey = `lock:webhook:${event.id}`;
+        const acquired = await this.redisService.client.set(
+          lockKey,
+          '1',
+          'EX',
+          60,
+          'NX',
+        );
+        if (!acquired) {
+          addSpanAttributes({ 'webhook.lock_acquired': false });
+          return;
+        }
+
+        try {
+          if (await this.webhooksRepository.existsByStripeEventId(event.id)) {
+            addSpanAttributes({ 'webhook.duplicate': true });
+            return;
+          }
+
+          await this.webhooksRepository.create({
+            stripeEventId: event.id,
+            type: event.type,
+            payload: event.data.object as unknown as Record<string, unknown>,
+          });
+
+          await this.dispatch(event);
+          await this.webhooksRepository.markProcessed(event.id);
+        } catch (error) {
+          await this.webhooksRepository.markFailed(
+            event.id,
+            error instanceof Error ? error.message : 'Unknown error',
+          );
+          throw error;
+        } finally {
+          await this.redisService.client.del(lockKey);
+        }
+      },
     );
-    if (!acquired) {
-      return;
-    }
-
-    try {
-      if (await this.webhooksRepository.existsByStripeEventId(event.id)) {
-        return;
-      }
-
-      await this.webhooksRepository.create({
-        stripeEventId: event.id,
-        type: event.type,
-        payload: event.data.object as unknown as Record<string, unknown>,
-      });
-
-      await this.dispatch(event);
-      await this.webhooksRepository.markProcessed(event.id);
-    } catch (error) {
-      await this.webhooksRepository.markFailed(
-        event.id,
-        error instanceof Error ? error.message : 'Unknown error',
-      );
-      throw error;
-    } finally {
-      await this.redisService.client.del(lockKey);
-    }
   }
 
   /** Routes events to the right domain-specific handler. */
@@ -108,6 +125,7 @@ export class WebhooksService {
   /** Applies invoice status and amount updates from Stripe to local DB. */
   private async handleInvoiceEvent(event: Stripe.Event) {
     const invoice = event.data.object as Stripe.Invoice;
+    addSpanAttributes({ 'stripe.invoice.id': invoice.id });
     const internalInvoice = await this.invoicesRepository.upsertFromStripe({
       stripeInvoiceId: invoice.id,
       amountDueCents: invoice.amount_due,
@@ -170,6 +188,7 @@ export class WebhooksService {
   /** Applies payment intent status updates from Stripe to local DB. */
   private async handlePaymentIntentEvent(event: Stripe.Event) {
     const paymentIntent = event.data.object as Stripe.PaymentIntent;
+    addSpanAttributes({ 'stripe.payment_intent.id': paymentIntent.id });
     await this.databaseService.db
       .update(billingPaymentIntents)
       .set({
@@ -182,6 +201,7 @@ export class WebhooksService {
   /** Applies refund status updates from Stripe to local DB. */
   private async handleRefundEvent(event: Stripe.Event) {
     const refund = event.data.object as Stripe.Refund;
+    addSpanAttributes({ 'stripe.refund.id': refund.id });
     await this.databaseService.db
       .update(billingRefunds)
       .set({
@@ -194,6 +214,7 @@ export class WebhooksService {
   /** Syncs setup intent lifecycle and linked payment method state locally. */
   private async handleSetupIntentEvent(event: Stripe.Event) {
     const setupIntent = event.data.object as Stripe.SetupIntent;
+    addSpanAttributes({ 'stripe.setup_intent.id': setupIntent.id });
     await this.paymentsRepository.upsertSetupIntentState(setupIntent);
 
     const paymentMethodId =
@@ -231,6 +252,7 @@ export class WebhooksService {
   /** Syncs customer payment method attachment and detach events locally. */
   private async handlePaymentMethodEvent(event: Stripe.Event) {
     const paymentMethod = event.data.object as Stripe.PaymentMethod;
+    addSpanAttributes({ 'stripe.payment_method.id': paymentMethod.id });
     const status =
       event.type === 'payment_method.detached' ? 'detached' : 'attached';
     await this.paymentsRepository.upsertPaymentMethodState(

@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
+import { PinoLogger } from 'nestjs-pino';
 import { OutboxService } from './outbox.service';
 
 type InvoiceEmailEvent = {
@@ -11,12 +12,13 @@ type InvoiceEmailEvent = {
 
 @Injectable()
 export class InvoiceNotificationsService {
-  private readonly logger = new Logger(InvoiceNotificationsService.name);
-
   constructor(
     private readonly outboxService: OutboxService,
     private readonly configService: ConfigService,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(InvoiceNotificationsService.name);
+  }
 
   @Cron('*/1 * * * *')
   /** Delivers invoice email events to an internal email webhook. */

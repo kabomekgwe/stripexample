@@ -34,6 +34,15 @@ Required:
 - `REDIS_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
+- `PINO_LOG_LEVEL` (optional, default `info`)
+- `OTEL_ENABLED` (optional, set `false` to disable telemetry)
+- `OTEL_SERVICE_NAME` (optional, default `new-stripe-api`)
+- `OTEL_EXPORTER_OTLP_ENDPOINT` (optional, OTLP HTTP base URL)
+- `OTEL_EXPORTER_OTLP_HEADERS` (optional, `key=value,key2=value2`)
+- `OTEL_TRACE_SAMPLE_RATIO` (optional, `0..1`, default `1`)
+- `OTEL_DIAGNOSTIC_LOG_LEVEL` (optional, `none|error|warn|info|debug|verbose|all`)
+- `OTEL_IGNORE_PATHS` (optional, comma list, default `/health,/docs,/docs-json,/docs-yaml`)
+- `OTEL_STRICT_STARTUP` (optional, `true` to fail app startup if telemetry init fails)
 - `BILLING_EMAIL_WEBHOOK_URL` (optional, for internal invoice email delivery)
 - `BILLING_USAGE_METER_EVENT_NAME` (optional, default `monthly_usage`)
 

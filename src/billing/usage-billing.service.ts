@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
+import { addSpanAttributes, runInSpan } from '../observability/tracing.util';
 import { RedisService } from '../infra/redis/redis.service';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
 import { RecordSubscriptionUsageBatchDto } from './dto/record-subscription-usage-batch.dto';
@@ -26,76 +27,122 @@ export class UsageBillingService {
     unitPriceCents: number;
     stripeCustomerId: string;
   }) {
-    const usage = await this.usageRepository.upsertMonthlyUsage({
-      billingPeriod: args.billingPeriod,
-      usageQuantity: args.usageQuantity,
-      unitPriceCents: args.unitPriceCents,
-    });
-    if (!usage) {
-      return null;
-    }
-
-    await this.outboxService.enqueue({
-      topic: 'usage.billing.finalize',
-      aggregateId: usage.id,
-      payload: {
-        usageId: usage.id,
-        stripeCustomerId: args.stripeCustomerId,
+    return runInSpan(
+      'billing.usage.record-monthly',
+      {
+        'code.function': 'recordMonthlyUsage',
+        'billing.period': args.billingPeriod,
+        'billing.usage.quantity': args.usageQuantity,
+        'stripe.customer_id': args.stripeCustomerId,
       },
-    });
+      async () => {
+        const usage = await this.usageRepository.upsertMonthlyUsage({
+          billingPeriod: args.billingPeriod,
+          usageQuantity: args.usageQuantity,
+          unitPriceCents: args.unitPriceCents,
+        });
+        if (!usage) {
+          return null;
+        }
 
-    return usage;
+        await this.outboxService.enqueue({
+          topic: 'usage.billing.finalize',
+          aggregateId: usage.id,
+          payload: {
+            usageId: usage.id,
+            stripeCustomerId: args.stripeCustomerId,
+          },
+        });
+
+        addSpanAttributes({ 'billing.usage.id': usage.id });
+        return usage;
+      },
+    );
   }
 
   /** Records a Stripe billing meter event for usage-based subscriptions. */
   async recordSubscriptionUsage(dto: RecordSubscriptionUsageDto) {
-    const meterEvent =
-      await this.stripeClientService.client.billing.meterEvents.create({
-        event_name: dto.eventName,
-        payload: {
-          stripe_customer_id: dto.stripeCustomerId,
-          value: String(dto.value),
-        },
-        timestamp: dto.timestamp,
-        identifier: dto.identifier,
-      });
+    return runInSpan(
+      'billing.usage.record-meter-event',
+      {
+        'code.function': 'recordSubscriptionUsage',
+        'messaging.system': 'stripe',
+        'messaging.operation': 'publish',
+        'messaging.destination.name': dto.eventName,
+        'billing.meter.event_name': dto.eventName,
+        'billing.meter.value': dto.value,
+        'stripe.customer_id': dto.stripeCustomerId,
+      },
+      async () => {
+        const meterEvent =
+          await this.stripeClientService.client.billing.meterEvents.create({
+            event_name: dto.eventName,
+            payload: {
+              stripe_customer_id: dto.stripeCustomerId,
+              value: String(dto.value),
+            },
+            timestamp: dto.timestamp,
+            identifier: dto.identifier,
+          });
 
-    return {
-      meterEventId: meterEvent.identifier,
-      eventName: meterEvent.event_name,
-      payload: meterEvent.payload,
-      timestamp: meterEvent.timestamp,
-    };
+        addSpanAttributes({
+          'billing.meter.identifier': meterEvent.identifier,
+          'billing.meter.timestamp': meterEvent.timestamp,
+        });
+
+        return {
+          meterEventId: meterEvent.identifier,
+          eventName: meterEvent.event_name,
+          payload: meterEvent.payload,
+          timestamp: meterEvent.timestamp,
+        };
+      },
+    );
   }
 
   /** Records a batch of Stripe billing meter events. */
   async recordSubscriptionUsageBatch(dto: RecordSubscriptionUsageBatchDto) {
-    const continueOnError = dto.continueOnError ?? true;
-    const successes: Array<Record<string, unknown>> = [];
-    const failures: Array<{ index: number; message: string }> = [];
+    return runInSpan(
+      'billing.usage.record-meter-event-batch',
+      {
+        'code.function': 'recordSubscriptionUsageBatch',
+        'billing.batch.size': dto.events.length,
+        'billing.batch.continue_on_error': dto.continueOnError ?? true,
+      },
+      async () => {
+        const continueOnError = dto.continueOnError ?? true;
+        const successes: Array<Record<string, unknown>> = [];
+        const failures: Array<{ index: number; message: string }> = [];
 
-    for (const [index, event] of dto.events.entries()) {
-      try {
-        const result = await this.recordSubscriptionUsage(event);
-        successes.push({ index, ...result });
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Unknown Stripe error';
-        failures.push({ index, message });
+        for (const [index, event] of dto.events.entries()) {
+          try {
+            const result = await this.recordSubscriptionUsage(event);
+            successes.push({ index, ...result });
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : 'Unknown Stripe error';
+            failures.push({ index, message });
 
-        if (!continueOnError) {
-          break;
+            if (!continueOnError) {
+              break;
+            }
+          }
         }
-      }
-    }
 
-    return {
-      total: dto.events.length,
-      successCount: successes.length,
-      failureCount: failures.length,
-      successes,
-      failures,
-    };
+        addSpanAttributes({
+          'billing.batch.success_count': successes.length,
+          'billing.batch.failure_count': failures.length,
+        });
+
+        return {
+          total: dto.events.length,
+          successCount: successes.length,
+          failureCount: failures.length,
+          successes,
+          failures,
+        };
+      },
+    );
   }
 
   /** Returns finalized monthly usage rows visible to clients. */
@@ -106,56 +153,76 @@ export class UsageBillingService {
   @Cron('0 5 25 * *')
   /** Processes queued usage events into Stripe meter events on the 25th. */
   async runMonthlyBillingJob() {
-    this.ensureMonthlyBillingWindow();
+    return runInSpan(
+      'billing.usage.monthly-finalize-job',
+      {
+        'code.function': 'runMonthlyBillingJob',
+        'job.name': 'billing.usage.monthly-finalize',
+        'job.schedule': '0 5 25 * *',
+      },
+      async () => {
+        this.ensureMonthlyBillingWindow();
 
-    const meterEventName =
-      this.configService.get<string>('BILLING_USAGE_METER_EVENT_NAME') ??
-      'monthly_usage';
+        const meterEventName =
+          this.configService.get<string>('BILLING_USAGE_METER_EVENT_NAME') ??
+          'monthly_usage';
+        addSpanAttributes({ 'billing.meter.event_name': meterEventName });
 
-    await this.outboxService.processByTopics(
-      ['usage.billing.finalize'],
-      async (event) => {
-        if (event.topic !== 'usage.billing.finalize') {
-          return;
-        }
+        await this.outboxService.processByTopics(
+          ['usage.billing.finalize'],
+          async (event) => {
+            if (event.topic !== 'usage.billing.finalize') {
+              return;
+            }
 
-        const usageId = String(event.payload.usageId);
-        const usage = await this.usageRepository.findById(usageId);
-        if (!usage || usage.finalized || usage.stripeInvoiceItemId) {
-          return;
-        }
+            const usageId = String(event.payload.usageId);
+            const usage = await this.usageRepository.findById(usageId);
+            if (!usage || usage.finalized || usage.stripeInvoiceItemId) {
+              return;
+            }
 
-        const lockKey = `lock:usage:${usage.billingPeriod}`;
-        const acquired = await this.redisService.client.set(
-          lockKey,
-          '1',
-          'EX',
-          90,
-          'NX',
-        );
-        if (!acquired) {
-          return;
-        }
-
-        try {
-          const meterEvent =
-            await this.stripeClientService.client.billing.meterEvents.create({
-              event_name: meterEventName,
-              payload: {
-                stripe_customer_id: String(event.payload.stripeCustomerId),
-                value: String(usage.usageQuantity),
-              },
-              identifier: `monthly-usage-${usage.id}`,
+            addSpanAttributes({
+              'billing.usage.id': usage.id,
+              'billing.period': usage.billingPeriod,
             });
 
-          await this.usageRepository.attachStripeInvoiceItem(
-            usage.id,
-            meterEvent.identifier,
-          );
-          await this.usageRepository.markFinalized(usage.id);
-        } finally {
-          await this.redisService.client.del(lockKey);
-        }
+            const lockKey = `lock:usage:${usage.billingPeriod}`;
+            const acquired = await this.redisService.client.set(
+              lockKey,
+              '1',
+              'EX',
+              90,
+              'NX',
+            );
+            if (!acquired) {
+              return;
+            }
+
+            try {
+              const meterEvent =
+                await this.stripeClientService.client.billing.meterEvents.create(
+                  {
+                    event_name: meterEventName,
+                    payload: {
+                      stripe_customer_id: String(
+                        event.payload.stripeCustomerId,
+                      ),
+                      value: String(usage.usageQuantity),
+                    },
+                    identifier: `monthly-usage-${usage.id}`,
+                  },
+                );
+
+              await this.usageRepository.attachStripeInvoiceItem(
+                usage.id,
+                meterEvent.identifier,
+              );
+              await this.usageRepository.markFinalized(usage.id);
+            } finally {
+              await this.redisService.client.del(lockKey);
+            }
+          },
+        );
       },
     );
   }

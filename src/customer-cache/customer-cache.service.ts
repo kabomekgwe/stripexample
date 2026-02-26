@@ -1,9 +1,11 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { asc } from 'drizzle-orm';
+import { PinoLogger } from 'nestjs-pino';
 import { IdempotencyService } from '../infra/idempotency/idempotency.service';
 import { DatabaseService } from '../infra/database/database.service';
 import { billingCustomers } from '../infra/database/schema';
+import { addSpanAttributes, runInSpan } from '../observability/tracing.util';
 import { RedisService } from '../infra/redis/redis.service';
 import {
   CUSTOMER_LIST_CACHE_KEY,
@@ -24,13 +26,14 @@ type CachedCustomer = {
 
 @Injectable()
 export class CustomerCacheService implements OnModuleInit {
-  private readonly logger = new Logger(CustomerCacheService.name);
-
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly redisService: RedisService,
     private readonly idempotencyService: IdempotencyService,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(CustomerCacheService.name);
+  }
 
   /**
    * Startup hydration so the first customer list request is Redis-first.
@@ -59,52 +62,77 @@ export class CustomerCacheService implements OnModuleInit {
    * Returns customer list from Redis, hydrating from DB if cache is missing.
    */
   async getCustomerListFromCache() {
-    const cached = await this.redisService.client.get(CUSTOMER_LIST_CACHE_KEY);
-    if (cached) {
-      return JSON.parse(cached) as CachedCustomer[];
-    }
+    return runInSpan(
+      'customer-cache.get-list',
+      {
+        'code.function': 'getCustomerListFromCache',
+        'db.system': 'redis',
+        'cache.key': CUSTOMER_LIST_CACHE_KEY,
+      },
+      async () => {
+        const cached = await this.redisService.client.get(
+          CUSTOMER_LIST_CACHE_KEY,
+        );
+        if (cached) {
+          addSpanAttributes({ 'cache.hit': true });
+          return JSON.parse(cached) as CachedCustomer[];
+        }
 
-    await this.syncCustomerListToRedis('cache_miss');
-    const hydrated = await this.redisService.client.get(
-      CUSTOMER_LIST_CACHE_KEY,
+        addSpanAttributes({ 'cache.hit': false });
+        await this.syncCustomerListToRedis('cache_miss');
+        const hydrated = await this.redisService.client.get(
+          CUSTOMER_LIST_CACHE_KEY,
+        );
+
+        return hydrated ? (JSON.parse(hydrated) as CachedCustomer[]) : [];
+      },
     );
-
-    return hydrated ? (JSON.parse(hydrated) as CachedCustomer[]) : [];
   }
 
   /**
    * Manually syncs customer snapshot with idempotent retries.
    */
   async syncCustomerListOnDemand(idempotencyKey: string) {
-    const scopedKey = `customer-cache.sync.${idempotencyKey}`;
-    const cached = await this.idempotencyService.getStoredResult(scopedKey);
-    if (cached) {
-      return cached;
-    }
+    return runInSpan(
+      'customer-cache.sync-on-demand',
+      {
+        'code.function': 'syncCustomerListOnDemand',
+        'idempotency.operation': 'customer-cache.sync',
+      },
+      async () => {
+        const scopedKey = `customer-cache.sync.${idempotencyKey}`;
+        const cached = await this.idempotencyService.getStoredResult(scopedKey);
+        if (cached) {
+          addSpanAttributes({ 'idempotency.cache_hit': true });
+          return cached;
+        }
 
-    const acquired = await this.idempotencyService.start(scopedKey);
-    if (!acquired) {
-      return {
-        accepted: false,
-        message: 'Cache sync request is already being processed.',
-      };
-    }
+        const acquired = await this.idempotencyService.start(scopedKey);
+        if (!acquired) {
+          addSpanAttributes({ 'idempotency.lock_acquired': false });
+          return {
+            accepted: false,
+            message: 'Cache sync request is already being processed.',
+          };
+        }
 
-    try {
-      await this.syncCustomerListToRedis('manual');
-      const metadata = await this.redisService.client.get(
-        CUSTOMER_LIST_CACHE_SYNCED_AT_KEY,
-      );
-      const result = {
-        accepted: true,
-        metadata: metadata ? JSON.parse(metadata) : null,
-      };
-      await this.idempotencyService.complete(scopedKey, result);
-      return result;
-    } catch (error) {
-      await this.idempotencyService.clear(scopedKey);
-      throw error;
-    }
+        try {
+          await this.syncCustomerListToRedis('manual');
+          const metadata = await this.redisService.client.get(
+            CUSTOMER_LIST_CACHE_SYNCED_AT_KEY,
+          );
+          const result = {
+            accepted: true,
+            metadata: metadata ? JSON.parse(metadata) : null,
+          };
+          await this.idempotencyService.complete(scopedKey, result);
+          return result;
+        } catch (error) {
+          await this.idempotencyService.clear(scopedKey);
+          throw error;
+        }
+      },
+    );
   }
 
   /**
@@ -113,45 +141,64 @@ export class CustomerCacheService implements OnModuleInit {
   async syncCustomerListToRedis(
     reason: 'startup' | 'schedule' | 'cache_miss' | 'manual',
   ) {
-    const lockAcquired = await this.redisService.client.set(
-      CUSTOMER_LIST_CACHE_SYNC_LOCK_KEY,
-      '1',
-      'EX',
-      120,
-      'NX',
+    return runInSpan(
+      'customer-cache.sync-redis-snapshot',
+      {
+        'code.function': 'syncCustomerListToRedis',
+        'cache.sync.reason': reason,
+      },
+      async () => {
+        const lockAcquired = await this.redisService.client.set(
+          CUSTOMER_LIST_CACHE_SYNC_LOCK_KEY,
+          '1',
+          'EX',
+          120,
+          'NX',
+        );
+        if (!lockAcquired) {
+          addSpanAttributes({ 'cache.sync.lock_acquired': false });
+          return;
+        }
+
+        try {
+          const customers = await this.databaseService.db
+            .select({
+              id: billingCustomers.id,
+              userId: billingCustomers.userId,
+              email: billingCustomers.email,
+              stripeCustomerId: billingCustomers.stripeCustomerId,
+              syncStatus: billingCustomers.syncStatus,
+              createdAt: billingCustomers.createdAt,
+              updatedAt: billingCustomers.updatedAt,
+            })
+            .from(billingCustomers)
+            .orderBy(asc(billingCustomers.createdAt));
+
+          addSpanAttributes({
+            'db.system': 'sqlite',
+            'cache.sync.customer_count': customers.length,
+          });
+
+          const nowIso = new Date().toISOString();
+          const pipeline = this.redisService.client.pipeline();
+          pipeline.set(CUSTOMER_LIST_CACHE_KEY, JSON.stringify(customers));
+          pipeline.set(
+            CUSTOMER_LIST_CACHE_SYNCED_AT_KEY,
+            JSON.stringify({
+              syncedAt: nowIso,
+              reason,
+              count: customers.length,
+            }),
+          );
+          await pipeline.exec();
+
+          this.logger.info(
+            `Customer list cache synced (${reason}) with ${customers.length} rows.`,
+          );
+        } finally {
+          await this.redisService.client.del(CUSTOMER_LIST_CACHE_SYNC_LOCK_KEY);
+        }
+      },
     );
-    if (!lockAcquired) {
-      return;
-    }
-
-    try {
-      const customers = await this.databaseService.db
-        .select({
-          id: billingCustomers.id,
-          userId: billingCustomers.userId,
-          email: billingCustomers.email,
-          stripeCustomerId: billingCustomers.stripeCustomerId,
-          syncStatus: billingCustomers.syncStatus,
-          createdAt: billingCustomers.createdAt,
-          updatedAt: billingCustomers.updatedAt,
-        })
-        .from(billingCustomers)
-        .orderBy(asc(billingCustomers.createdAt));
-
-      const nowIso = new Date().toISOString();
-      const pipeline = this.redisService.client.pipeline();
-      pipeline.set(CUSTOMER_LIST_CACHE_KEY, JSON.stringify(customers));
-      pipeline.set(
-        CUSTOMER_LIST_CACHE_SYNCED_AT_KEY,
-        JSON.stringify({ syncedAt: nowIso, reason, count: customers.length }),
-      );
-      await pipeline.exec();
-
-      this.logger.log(
-        `Customer list cache synced (${reason}) with ${customers.length} rows.`,
-      );
-    } finally {
-      await this.redisService.client.del(CUSTOMER_LIST_CACHE_SYNC_LOCK_KEY);
-    }
   }
 }
