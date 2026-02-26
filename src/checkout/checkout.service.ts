@@ -85,4 +85,9 @@ export class CheckoutService {
       throw error;
     }
   }
+
+  /** Returns a checkout session by internal id. */
+  async getById(id: string) {
+    return this.checkoutRepository.findById(id);
+  }
 }

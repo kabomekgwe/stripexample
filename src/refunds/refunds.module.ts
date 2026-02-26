@@ -6,5 +6,6 @@ import { RefundsService } from './refunds.service';
 @Module({
   controllers: [RefundsController],
   providers: [RefundsRepository, RefundsService],
+  exports: [RefundsService],
 })
 export class RefundsModule {}
