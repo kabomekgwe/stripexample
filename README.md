@@ -70,6 +70,7 @@ Services:
 - `POST /payments/payment-methods/attach`
 - `POST /payments/payment-methods/detach`
 - `POST /payments/setup-intents`
+- `POST /payments/setup-intents/confirm`
 - `POST /payments/payment-methods/default`
 - `POST /payments/customers/:customerId/payment-methods/flows/attach`
 - `POST /payments/customers/:customerId/payment-methods/flows/add-more`

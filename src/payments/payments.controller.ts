@@ -16,6 +16,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AttachPaymentMethodDto } from './dto/attach-payment-method.dto';
+import { ConfirmSetupIntentDto } from './dto/confirm-setup-intent.dto';
 import { CreateSetupIntentDto } from './dto/create-setup-intent.dto';
 import { DetachPaymentMethodDto } from './dto/detach-payment-method.dto';
 import { SetDefaultPaymentMethodDto } from './dto/set-default-payment-method.dto';
@@ -87,6 +88,25 @@ export class PaymentsController {
     @Headers('idempotency-key') idempotencyKey?: string,
   ) {
     return this.paymentsService.createSetupIntent(
+      dto,
+      idempotencyKey ?? randomUUID(),
+    );
+  }
+
+  /** Confirms a setup intent using an existing Stripe payment method id. */
+  @Post('setup-intents/confirm')
+  @ApiOperation({ summary: 'Confirm setup intent for API-only testing flow' })
+  @ApiHeader({
+    name: 'idempotency-key',
+    required: false,
+    description: 'Optional idempotency key for safe retries',
+  })
+  @ApiOkResponse({ description: 'Confirmed setup intent details' })
+  confirmSetupIntent(
+    @Body() dto: ConfirmSetupIntentDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
+  ) {
+    return this.paymentsService.confirmSetupIntent(
       dto,
       idempotencyKey ?? randomUUID(),
     );

@@ -11,6 +11,7 @@ import { IdempotencyService } from '../infra/idempotency/idempotency.service';
 import type { PaymentMethodType } from './constants/payment-method-types';
 import { PAYMENT_METHOD_TYPES } from './constants/payment-method-types';
 import { AttachPaymentMethodDto } from './dto/attach-payment-method.dto';
+import { ConfirmSetupIntentDto } from './dto/confirm-setup-intent.dto';
 import { CreateSetupIntentDto } from './dto/create-setup-intent.dto';
 import { DetachPaymentMethodDto } from './dto/detach-payment-method.dto';
 import { ListCustomerPaymentMethodsDto } from './dto/list-customer-payment-methods.dto';
@@ -184,6 +185,66 @@ export class PaymentsService {
           clientSecret: setupIntent.client_secret,
           status: setupIntent.status,
           paymentMethodTypes: allowedMethods,
+        };
+      },
+    );
+  }
+
+  /** Confirms an existing setup intent using a payment method id for API testing. */
+  async confirmSetupIntent(dto: ConfirmSetupIntentDto, idempotencyKey: string) {
+    return this.runIdempotent(
+      'payment-methods.setup-intents.confirm',
+      idempotencyKey,
+      async () => {
+        const customer = await this.requireLinkedCustomer(dto.customerId);
+        const setupIntent = await this.paymentsRepository.retrieveSetupIntent(
+          dto.setupIntentId,
+        );
+        const setupIntentCustomerId =
+          typeof setupIntent.customer === 'string'
+            ? setupIntent.customer
+            : setupIntent.customer?.id;
+
+        if (setupIntentCustomerId !== customer.stripeCustomerId) {
+          throw new BadRequestException(
+            'Setup intent does not belong to the provided customer.',
+          );
+        }
+
+        const confirmed = await this.paymentsRepository.confirmSetupIntent({
+          setupIntentId: dto.setupIntentId,
+          paymentMethodId: dto.paymentMethodId,
+        });
+        await this.paymentsRepository.upsertSetupIntentState(confirmed);
+
+        const confirmedPaymentMethodId =
+          typeof confirmed.payment_method === 'string'
+            ? confirmed.payment_method
+            : (confirmed.payment_method?.id ?? null);
+
+        const shouldSetDefault =
+          dto.setAsDefaultOnSuccess &&
+          confirmed.status === 'succeeded' &&
+          Boolean(confirmedPaymentMethodId);
+
+        if (shouldSetDefault && confirmedPaymentMethodId) {
+          await this.paymentsRepository.setDefaultPaymentMethod(
+            customer.stripeCustomerId,
+            confirmedPaymentMethodId,
+          );
+          await this.paymentsRepository.syncDefaultPaymentMethodFlag({
+            stripeCustomerId: customer.stripeCustomerId,
+            defaultPaymentMethodId: confirmedPaymentMethodId,
+          });
+        }
+
+        return {
+          setupIntentId: confirmed.id,
+          status: confirmed.status,
+          paymentMethodId: confirmedPaymentMethodId,
+          clientSecret: confirmed.client_secret,
+          lastSetupError: confirmed.last_setup_error?.message ?? null,
+          setAsDefaultApplied: Boolean(shouldSetDefault),
         };
       },
     );

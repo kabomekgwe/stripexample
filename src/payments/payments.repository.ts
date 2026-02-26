@@ -105,6 +105,24 @@ export class PaymentsRepository {
     });
   }
 
+  /** Retrieves a setup intent by Stripe id. */
+  async retrieveSetupIntent(setupIntentId: string) {
+    return this.stripeClientService.client.setupIntents.retrieve(setupIntentId);
+  }
+
+  /** Confirms a setup intent with a provided payment method. */
+  async confirmSetupIntent(args: {
+    setupIntentId: string;
+    paymentMethodId: string;
+  }) {
+    return this.stripeClientService.client.setupIntents.confirm(
+      args.setupIntentId,
+      {
+        payment_method: args.paymentMethodId,
+      },
+    );
+  }
+
   /** Lists payment methods currently attached to a Stripe customer. */
   async listCustomerPaymentMethods(args: {
     stripeCustomerId: string;

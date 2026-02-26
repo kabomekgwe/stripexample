@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  index,
   integer,
   sqliteTable,
   text,
@@ -30,32 +31,53 @@ export const billingCustomers = sqliteTable(
     createdAt: timestampColumn('created_at'),
     updatedAt: timestampColumn('updated_at'),
   },
-  (table) => [uniqueIndex('billing_customers_email_idx').on(table.email)],
+  (table) => [
+    uniqueIndex('billing_customers_email_idx').on(table.email),
+    uniqueIndex('billing_customers_stripe_customer_id_idx').on(
+      table.stripeCustomerId,
+    ),
+  ],
 );
 
-export const billingPaymentIntents = sqliteTable('billing_payment_intents', {
-  id: idColumn(),
-  customerId: text('customer_id').notNull(),
-  amountCents: integer('amount_cents').notNull(),
-  currency: text('currency').notNull(),
-  status: text('status').notNull().default('requires_payment_method'),
-  stripePaymentIntentId: text('stripe_payment_intent_id'),
-  createdAt: timestampColumn('created_at'),
-  updatedAt: timestampColumn('updated_at'),
-});
+export const billingPaymentIntents = sqliteTable(
+  'billing_payment_intents',
+  {
+    id: idColumn(),
+    customerId: text('customer_id').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull(),
+    status: text('status').notNull().default('requires_payment_method'),
+    stripePaymentIntentId: text('stripe_payment_intent_id'),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    uniqueIndex('billing_payment_intents_stripe_payment_intent_id_idx').on(
+      table.stripePaymentIntentId,
+    ),
+  ],
+);
 
-export const billingSubscriptions = sqliteTable('billing_subscriptions', {
-  id: idColumn(),
-  customerId: text('customer_id').notNull(),
-  planCode: text('plan_code').notNull(),
-  status: text('status').notNull().default('pending'),
-  stripeSubscriptionId: text('stripe_subscription_id'),
-  currentPeriodStart: optionalTimestampColumn('current_period_start'),
-  currentPeriodEnd: optionalTimestampColumn('current_period_end'),
-  canceledAt: optionalTimestampColumn('canceled_at'),
-  createdAt: timestampColumn('created_at'),
-  updatedAt: timestampColumn('updated_at'),
-});
+export const billingSubscriptions = sqliteTable(
+  'billing_subscriptions',
+  {
+    id: idColumn(),
+    customerId: text('customer_id').notNull(),
+    planCode: text('plan_code').notNull(),
+    status: text('status').notNull().default('pending'),
+    stripeSubscriptionId: text('stripe_subscription_id'),
+    currentPeriodStart: optionalTimestampColumn('current_period_start'),
+    currentPeriodEnd: optionalTimestampColumn('current_period_end'),
+    canceledAt: optionalTimestampColumn('canceled_at'),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    uniqueIndex('billing_subscriptions_stripe_subscription_id_idx').on(
+      table.stripeSubscriptionId,
+    ),
+  ],
+);
 
 export const billingCheckoutSessions = sqliteTable(
   'billing_checkout_sessions',
@@ -70,31 +92,52 @@ export const billingCheckoutSessions = sqliteTable(
     createdAt: timestampColumn('created_at'),
     updatedAt: timestampColumn('updated_at'),
   },
+  (table) => [
+    uniqueIndex('billing_checkout_sessions_stripe_checkout_session_id_idx').on(
+      table.stripeCheckoutSessionId,
+    ),
+  ],
 );
 
-export const billingInvoices = sqliteTable('billing_invoices', {
-  id: idColumn(),
-  subscriptionId: text('subscription_id'),
-  stripeInvoiceId: text('stripe_invoice_id'),
-  amountDueCents: integer('amount_due_cents').notNull().default(0),
-  amountPaidCents: integer('amount_paid_cents').notNull().default(0),
-  currency: text('currency').notNull().default('usd'),
-  status: text('status').notNull().default('draft'),
-  invoiceUrl: text('invoice_url'),
-  createdAt: timestampColumn('created_at'),
-  updatedAt: timestampColumn('updated_at'),
-});
+export const billingInvoices = sqliteTable(
+  'billing_invoices',
+  {
+    id: idColumn(),
+    subscriptionId: text('subscription_id'),
+    stripeInvoiceId: text('stripe_invoice_id'),
+    amountDueCents: integer('amount_due_cents').notNull().default(0),
+    amountPaidCents: integer('amount_paid_cents').notNull().default(0),
+    currency: text('currency').notNull().default('usd'),
+    status: text('status').notNull().default('draft'),
+    invoiceUrl: text('invoice_url'),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    uniqueIndex('billing_invoices_stripe_invoice_id_idx').on(
+      table.stripeInvoiceId,
+    ),
+  ],
+);
 
-export const billingRefunds = sqliteTable('billing_refunds', {
-  id: idColumn(),
-  paymentIntentId: text('payment_intent_id').notNull(),
-  amountCents: integer('amount_cents').notNull(),
-  reason: text('reason'),
-  status: text('status').notNull().default('pending'),
-  stripeRefundId: text('stripe_refund_id'),
-  createdAt: timestampColumn('created_at'),
-  updatedAt: timestampColumn('updated_at'),
-});
+export const billingRefunds = sqliteTable(
+  'billing_refunds',
+  {
+    id: idColumn(),
+    paymentIntentId: text('payment_intent_id').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    reason: text('reason'),
+    status: text('status').notNull().default('pending'),
+    stripeRefundId: text('stripe_refund_id'),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    uniqueIndex('billing_refunds_stripe_refund_id_idx').on(
+      table.stripeRefundId,
+    ),
+  ],
+);
 
 export const billingUsageMonthly = sqliteTable(
   'billing_usage_monthly',
@@ -130,20 +173,30 @@ export const stripeWebhookEvents = sqliteTable('stripe_webhook_events', {
   updatedAt: timestampColumn('updated_at'),
 });
 
-export const integrationOutbox = sqliteTable('integration_outbox', {
-  id: idColumn(),
-  topic: text('topic').notNull(),
-  aggregateId: text('aggregate_id').notNull(),
-  payload: text('payload', { mode: 'json' })
-    .$type<Record<string, unknown>>()
-    .notNull(),
-  status: text('status').notNull().default('pending'),
-  attempts: integer('attempts').notNull().default(0),
-  nextRunAt: timestampColumn('next_run_at'),
-  lastError: text('last_error'),
-  createdAt: timestampColumn('created_at'),
-  updatedAt: timestampColumn('updated_at'),
-});
+export const integrationOutbox = sqliteTable(
+  'integration_outbox',
+  {
+    id: idColumn(),
+    topic: text('topic').notNull(),
+    aggregateId: text('aggregate_id').notNull(),
+    payload: text('payload', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    status: text('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextRunAt: timestampColumn('next_run_at'),
+    lastError: text('last_error'),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    index('integration_outbox_status_next_run_at_aggregate_id_idx').on(
+      table.status,
+      table.nextRunAt,
+      table.aggregateId,
+    ),
+  ],
+);
 
 export const billingPaymentMethodPolicies = sqliteTable(
   'billing_payment_method_policies',
@@ -163,20 +216,37 @@ export const billingPaymentMethodPolicies = sqliteTable(
       table.currency,
       table.country,
     ),
+    index('billing_payment_method_policies_type_priority_enabled_idx').on(
+      table.paymentMethodType,
+      table.priority,
+      table.enabled,
+    ),
   ],
 );
 
-export const billingSetupIntents = sqliteTable('billing_setup_intents', {
-  id: idColumn(),
-  stripeSetupIntentId: text('stripe_setup_intent_id').notNull().unique(),
-  stripeCustomerId: text('stripe_customer_id').notNull(),
-  stripePaymentMethodId: text('stripe_payment_method_id'),
-  status: text('status').notNull(),
-  usage: text('usage'),
-  lastSetupError: text('last_setup_error'),
-  createdAt: timestampColumn('created_at'),
-  updatedAt: timestampColumn('updated_at'),
-});
+export const billingSetupIntents = sqliteTable(
+  'billing_setup_intents',
+  {
+    id: idColumn(),
+    stripeSetupIntentId: text('stripe_setup_intent_id').notNull().unique(),
+    stripeCustomerId: text('stripe_customer_id').notNull(),
+    stripePaymentMethodId: text('stripe_payment_method_id'),
+    status: text('status').notNull(),
+    usage: text('usage'),
+    lastSetupError: text('last_setup_error'),
+    createdAt: timestampColumn('created_at'),
+    updatedAt: timestampColumn('updated_at'),
+  },
+  (table) => [
+    index('billing_setup_intents_customer_created_at_idx').on(
+      table.stripeCustomerId,
+      table.createdAt,
+    ),
+    index('billing_setup_intents_payment_method_id_idx').on(
+      table.stripePaymentMethodId,
+    ),
+  ],
+);
 
 export const billingCustomerPaymentMethods = sqliteTable(
   'billing_customer_payment_methods',
@@ -199,6 +269,11 @@ export const billingCustomerPaymentMethods = sqliteTable(
     uniqueIndex('billing_customer_payment_methods_scope_idx').on(
       table.stripeCustomerId,
       table.stripePaymentMethodId,
+    ),
+    index('billing_customer_payment_methods_customer_default_status_idx').on(
+      table.stripeCustomerId,
+      table.isDefault,
+      table.status,
     ),
   ],
 );
