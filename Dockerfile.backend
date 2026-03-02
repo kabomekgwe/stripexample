@@ -1,0 +1,41 @@
+# Base stage for shared settings
+FROM node:22-alpine AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable && corepack prepare pnpm@10.24.0 --activate
+WORKDIR /app
+
+# Dependencies stage
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY shared/package.json ./shared/
+COPY backend/package.json ./backend/
+RUN pnpm install --frozen-lockfile
+
+# Build stage
+FROM deps AS builder
+COPY shared ./shared
+COPY backend ./backend
+RUN pnpm --filter @payments/shared build
+RUN pnpm --filter backend build
+
+# Runner stage
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy workspace config and package manifests
+COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./
+# Copy built shared package
+COPY --from=builder /app/shared/package.json ./shared/
+COPY --from=builder /app/shared/dist ./shared/dist
+# Copy built backend package
+COPY --from=builder /app/backend/package.json ./backend/
+COPY --from=builder /app/backend/dist ./backend/dist
+
+# Install only production dependencies
+RUN pnpm install --prod --frozen-lockfile
+
+EXPOSE 3000
+# The entrypoint is dist/src/main.js
+CMD ["node", "backend/dist/src/main.js"]

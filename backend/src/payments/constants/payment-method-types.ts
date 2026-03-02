@@ -1,3 +1,13 @@
+export const STRIPE_ENABLED_PAYMENT_METHODS = [
+  'bancontact',
+  'blik',
+  'card',
+  'eps',
+  'giropay',
+  'klarna',
+  'link',
+] as const;
+
 export const PAYMENT_METHOD_TYPES = [
   'acss_debit',
   'affirm',
