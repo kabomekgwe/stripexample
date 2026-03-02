@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { randomUUID } from 'node:crypto';
+import { PinoLogger } from 'nestjs-pino';
 import { CustomerCacheService } from '../customer-cache/customer-cache.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomersService } from './customers.service';
@@ -17,14 +18,20 @@ export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
     private readonly customerCacheService: CustomerCacheService,
-  ) {}
+    private readonly logger: PinoLogger,
+  ) {
+    this.logger.setContext(CustomersController.name);
+  }
 
   /** Returns customer list from Redis snapshot cache. */
   @Get()
   @ApiOperation({ summary: 'List customers (Redis-backed)' })
   @ApiOkResponse({ description: 'Cached customer list' })
-  list() {
-    return this.customerCacheService.getCustomerListFromCache();
+  async list() {
+    this.logger.info('GET /customers request received');
+    const result = await this.customerCacheService.getCustomerListFromCache();
+    this.logger.info(`Returning ${result.length} customers from cache`);
+    return result;
   }
 
   /** Triggers an on-demand Redis customer snapshot sync. */

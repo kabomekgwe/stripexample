@@ -8,6 +8,7 @@ import { buildIdempotencyNamespace } from '../payments/utils/account.util';
 import { StripeClientService } from '../stripe-client/stripe-client.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomersRepository } from './customers.repository';
+import { CustomerCacheService } from '../customer-cache/customer-cache.service';
 
 @Injectable()
 export class CustomersService {
@@ -16,7 +17,8 @@ export class CustomersService {
     private readonly customersRepository: CustomersRepository,
     private readonly idempotencyService: IdempotencyService,
     private readonly stripeClientService: StripeClientService,
-  ) {}
+    private readonly customerCacheService: CustomerCacheService,
+  ) { }
 
   /** Creates or reuses a customer record, then synchronizes it to Stripe safely. */
   async create(
@@ -93,6 +95,9 @@ export class CustomersService {
         syncStatus: 'synced',
       };
       await this.idempotencyService.complete(scopedKey, result);
+
+      // Trigger cache sync so the UI is updated immediately
+      await this.customerCacheService.syncCustomerListToRedis('manual');
 
       return result;
     } catch (error) {
