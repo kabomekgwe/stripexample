@@ -6,6 +6,7 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = dirname(projectRoot);
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   turbopack: {
     root: workspaceRoot,
   },

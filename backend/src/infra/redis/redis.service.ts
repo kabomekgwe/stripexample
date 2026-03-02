@@ -12,8 +12,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.client = new Redis(
       this.configService.getOrThrow<string>('REDIS_URL'),
       {
-        maxRetriesPerRequest: 3,
-        enableOfflineQueue: false,
+        maxRetriesPerRequest: 10,
+        enableOfflineQueue: true,
       },
     );
   }
@@ -27,7 +27,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         'db.system': 'redis',
       },
       async () => {
-        await this.client.ping();
+        try {
+          await this.client.ping();
+        } catch (err) {
+          // Log but don't crash; ioredis will retry if enableOfflineQueue is true
+          console.warn('Initial Redis ping failed, but enableOfflineQueue is active. App will continue to start.');
+        }
       },
     );
   }
